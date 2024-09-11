@@ -7,6 +7,9 @@ class instance:
         self.map_f_name = map_f_name
         self.agent_fname = agent_fname
         self.verbose = verbose
+
+        self.load_map()
+        self.load_agents()
     def load_map(self):
         with open(self.map_f_name) as map_file:
             headers = [map_file.readline() for i in range(4)]
@@ -54,3 +57,17 @@ class instance:
         self.num_agents = len(self.start_locations)
         if self.verbose:
             print(f'**** Successfully loaded {self.num_agents} agents! ****\n')
+    def is_in_map(self, loc):
+        pos_int = loc[0] * loc[1]
+        return pos_int >= 0 and pos_int < self.map_size
+    def is_valid_move(self, cur_loc, next_loc):
+        # Check if remains in map
+        if not self.is_in_map(next_loc):
+            return False
+
+        # Check if obstacle
+        if self.map[next_loc[0], next_loc[1]]:
+            return False
+
+        # Make sure next loc is reachable in single move
+        return aux.manhattan_dist(cur_loc, next_loc) < 2

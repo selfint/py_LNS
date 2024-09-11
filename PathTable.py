@@ -13,6 +13,14 @@ class PathTable:
         self.extend_table_to_time(loc, t+1) # Make sure point can contain the length of the path
         self.table[loc][t].add(agent_id)
 
+    def remove_path(self, agent_id, path):
+        for loc, t in zip(path, range(len(path))):
+            self.remove_point(agent_id, tuple(loc), t)
+
+    def remove_point(self,agent_id, loc, t):
+        if agent_id in self.table[loc][t]:
+            self.table[loc][t].remove(agent_id)
+
 
     def extend_table_to_time(self, loc, t):
         if len(self.table[loc]) < t: # need to extend

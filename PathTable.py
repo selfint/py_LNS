@@ -1,8 +1,8 @@
 class PathTable:
     def __init__(self, num_of_rows, num_of_cols):
         self.table = dict()
-        for i in range(1, num_of_rows+1):
-            for j in range(1, num_of_cols+1):
+        for i in range(0, num_of_rows+1):
+            for j in range(0, num_of_cols+1):
                 self.table[(i,j)] = []
 
     def insert_path(self, agent_id, path):

@@ -18,7 +18,7 @@ class PathTable:
             self.remove_point(agent_id, tuple(loc), t)
 
     def remove_point(self,agent_id, loc, t):
-        if agent_id in self.table[loc][t]:
+        if len(self.table[loc]) > t and agent_id in self.table[loc][t]:
             self.table[loc][t].remove(agent_id)
 
 
@@ -26,6 +26,13 @@ class PathTable:
         if len(self.table[loc]) < t: # need to extend
             addition = [set() for i in range(t - len(self.table[loc]))]
             self.table[loc] += addition
+
+    def is_path_available(self, path):
+        for loc, t in zip(path, range(len(path))):
+            if len(self.table[tuple(loc)]) > t and len(self.table[tuple(loc)][t]) > 0:
+                return False
+        return True
+
 
 
 

@@ -15,12 +15,14 @@ class Logger:
     def __init__(self, save_path, instance:instance.instance):
         self.save_path = save_path
         self.instance = instance
-        self.instance_column_names = ['map_name','agent_name', 'n_agents', 'solver_name']
+        self.instance_column_names = ['map_name','agent_name', 'n_agents', 'n_paths', 'solver_name', 'agent_temp']
         solver_name = self.instance.instance_name
         n_agents = self.instance.num_agents
         map_name = os.path.basename(self.instance.map_f_name)
         agent_name = os.path.basename(self.instance.agent_fname)
-        self.instance_columns = [map_name,agent_name,n_agents, solver_name]
+        n_paths = self.instance.n_paths
+        agent_temp = self.instance.agent_path_temp
+        self.instance_columns = [map_name,agent_name,n_agents,n_paths, solver_name, agent_temp]
 
     def start(self):
         self.start_time = time.time()

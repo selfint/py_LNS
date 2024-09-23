@@ -7,6 +7,7 @@ class Agent:
         self.start = start_loc
         self.end = end_loc
         self.n_paths = n_paths
+        self.path_id = -1
 
     def generate_paths(self, num_rows, num_cols, temp):
         self.paths = [create_random_step_path(self.start, self.end, num_rows, num_cols, temp) for i in range(self.n_paths)]

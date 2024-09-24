@@ -3,6 +3,7 @@ import instance
 import PathTable
 import numpy as np
 from LowLevelSolvers import PPNeighborhoodRepair
+import DestroyMethods
 
 def random_initial_solution(instance: instance.instance, path_table: PathTable.PathTable):
     random_path_selection = np.random.randint(instance.n_paths, size=instance.num_agents)
@@ -34,8 +35,9 @@ class RandomPP:
             print(f'\n**** Successfully solved for {self.n_solved} agents: ****')
             print(f'\n     Failed for {self.instance.num_agents - self.n_solved} agents\n')
 
+
 class IterativeRandomLNS:
-    def __init__(self, instance: instance.instance, path_table:PathTable.PathTable, subset_size, num_iterations = 10000):
+    def __init__(self, instance: instance.instance, path_table:PathTable.PathTable, subset_size, num_iterations = 100000):
         self.instance = instance
         self.path_table = path_table
         self.subset_size = subset_size
@@ -43,11 +45,12 @@ class IterativeRandomLNS:
         self.num_iterations = num_iterations
         self.num_collisions = self.path_table.num_collisions()
         self.collision_statistics = [self.num_collisions]
+        self.destroy_heuristic = DestroyMethods.PriorityDestroyHeuristic(instance, subset_size)
 
 
 
     def run_iteration(self):
-        subset = np.random.choice(range(1, self.instance.num_agents+1), self.subset_size, replace=False)
+        subset = self.destroy_heuristic.generate_subset()#np.random.choice(range(1, self.instance.num_agents+1), self.subset_size, replace=False)
         subset_path_ids = [int(self.instance.agents[agent_id].path_id) for agent_id in subset]
         print(subset)
         if self.verbose:

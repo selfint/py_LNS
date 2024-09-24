@@ -62,19 +62,18 @@ class instance:
         self.num_agents = len(self.start_locations)
         if self.verbose:
             print(f'**** Successfully loaded {self.num_agents} agents! ****\n')
-        self.agents = {i: Agent(i, s, t, self.n_paths) for i, s, t in (zip(range(1, self.num_agents+1), self.start_locations, self.goal_locations))}
+        self.agents = {i: Agent(self, i, s, t, self.n_paths) for i, s, t in (zip(range(1, self.num_agents+1), self.start_locations, self.goal_locations))}
         for agent in self.agents.values():
             agent.generate_paths(self.num_of_rows, self.num_of_cols, self.agent_path_temp)
     def is_in_map(self, loc):
-        pos_int = loc[0] * loc[1]
-        return pos_int >= 0 and pos_int < self.map_size
+        return 0 <= loc[0] < self.num_of_rows and 0 <= loc[1] < self.num_of_cols
     def is_valid_move(self, cur_loc, next_loc):
         # Check if remains in map
         if not self.is_in_map(next_loc):
             return False
 
         # Check if obstacle
-        if self.map[next_loc[0], next_loc[1]]:
+        if self.map[next_loc[0], next_loc[1]] == 1:
             return False
 
         # Make sure next loc is reachable in single move

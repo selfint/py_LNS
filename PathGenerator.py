@@ -1,4 +1,8 @@
 import numpy as np
+
+import aux
+
+
 def softmax(x):
     return np.exp(x) / sum(np.exp(x))
 
@@ -22,18 +26,49 @@ def create_random_point_toward_end(cur_point,end, temp):
         choice = 2 * choice - 1  # -1 means left, 1 means right
         return np.array([cur_x, cur_y + choice])
 
+def create_random_point_toward_end_with_obstacles(instance,cur_point,end, temp):
+    end_x = end[0]
+    end_y = end[1]
+    cur_x = cur_point[0]
+    cur_y = cur_point[1]
+    delta_x = end_x - cur_x
+    delta_y = end_y - cur_y
+    x_scores = [0,delta_x/temp] if delta_x > 0 else [-delta_x/temp, 0]
+    y_scores = [0,delta_y/temp] if delta_y > 0 else [-delta_y/temp, 0]
+
+
+    scores = np.array(x_scores + y_scores) # coord 0 means left, 1 means right
+
+    x_shift_list = [-1, 1, 0, 0]
+    y_shift_list = [0, 0, -1, 1]
+
+    for idx, x_shift, y_shift in zip(range(4), x_shift_list, y_shift_list):
+        if not instance.is_valid_move((cur_x, cur_y), (cur_x+x_shift, cur_y+y_shift)):
+            scores[idx] = -np.inf
+    probs = softmax(scores)  # coord 0 means left, 1 means right
+    choice = int(np.random.choice(4, 1, p=probs))
+
+    if choice < 2:
+        choice = 2 * choice -1 # -1 means left, 1 means right
+        return np.array([cur_x+choice, cur_y])
+    else:
+        choice -= 2
+        choice = 2 * choice - 1  # -1 means left, 1 means right
+        return np.array([cur_x, cur_y + choice])
+
 
 def is_point_valid(point: np.array, num_of_rows, num_of_cols):
     return 0 <= point[0] <= num_of_rows and 0 <= point[1] <= num_of_cols
 
 
-def create_random_step_path(start, end, num_of_rows, num_of_cols, temp = 1):
+def create_random_step_path(instance, start, end, num_of_rows, num_of_cols, temp = 1):
     path = [start]
 
     cur_point = path[0]
-    while not np.array_equal(cur_point,end):
-        new_point = create_random_point_toward_end(cur_point,end, temp)
-        if is_point_valid(new_point, num_of_rows, num_of_cols):
+    while not np.array_equal(cur_point,end) and aux.manhattan_dist(cur_point, end) > 1:
+        new_point = create_random_point_toward_end_with_obstacles(instance,cur_point,end, temp)
+        if is_point_valid(new_point, num_of_rows, num_of_cols) and instance.map[new_point[0], new_point[1]] != 1:
             cur_point = new_point
             path += [cur_point]
+    path += [end]
     return np.array(path)

@@ -35,13 +35,14 @@ class RandomPP:
             print(f'\n     Failed for {self.instance.num_agents - self.n_solved} agents\n')
 
 class IterativeRandomLNS:
-    def __init__(self, instance: instance.instance, path_table:PathTable.PathTable, subset_size, num_iterations = 1000):
+    def __init__(self, instance: instance.instance, path_table:PathTable.PathTable, subset_size, num_iterations = 10000):
         self.instance = instance
         self.path_table = path_table
         self.subset_size = subset_size
         self.verbose = self.instance.verbose
         self.num_iterations = num_iterations
         self.num_collisions = self.path_table.num_collisions()
+        self.collision_statistics = [self.num_collisions]
 
 
 
@@ -67,6 +68,8 @@ class IterativeRandomLNS:
                 self.path_table.insert_path(agent_id, agent.paths[path_id])
             if self.verbose:
                 print(f'**** Iteration failed! \n****')
+        self.collision_statistics += [self.num_collisions]
+
 
     def run(self):
         for iteration in range(self.num_iterations):

@@ -40,6 +40,13 @@ class PathTable:
                 count += 1
         return count
 
+    def count_collisions_along_existing_path(self, path):
+        count = 0
+        for loc, t in zip(path, range(len(path))):
+            if len(self.table[tuple(loc)]) > t and len(self.table[tuple(loc)][t]) > 1:
+                count += 1
+        return count
+
     def num_collisions(self):
         count = 0
         for time_list in self.table.values():

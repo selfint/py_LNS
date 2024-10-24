@@ -108,3 +108,23 @@ def plot_line_graph(x,y, title = "", label = ""):
 
     #plt.legend()
     plt.show()
+
+def plot_line_graphs(x,y_columns, title = "", x_axis_label = "", y_axis_label = "",  y_labels = []):
+    '''
+
+    Plots a path represented by a 2d numpy array
+
+    Args:
+        path : numpy array (nx2)
+    '''
+    plt.figure(figsize=[10, 10])
+    plt.grid()
+    plt.title(title)
+    plt.xlabel(x_axis_label)
+    plt.ylabel(y_axis_label)
+
+    for y, label in zip(y_columns, y_labels):
+        plt.plot(x, y, label = label)
+
+    plt.legend()
+    plt.show()

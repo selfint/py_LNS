@@ -40,7 +40,8 @@ class PPNeighborhoodRepair:
 
     def run(self):
         self.destroy_neighborhood()
+        print(f'     num_cols:{self.path_table.num_collisions()}')
 
-        for agent_id in self.agent_subset:
+        for agent_id in self.agent_subset:#np.random.permutation(self.agent_subset):
             self.reroute_agent(agent_id)
 

@@ -63,9 +63,9 @@ class PathTable:
             for point_set in time_list:
                 if len(point_set) > 1:
                     for i,j in itertools.combinations(point_set, 2):
-                        matrix[i,j] = 1
-                        matrix[j,i] = 1
-        return matrix
+                        matrix[i, j] = 1
+                        matrix[j, i] = 1
+        return matrix.astype(int)
 
 
 

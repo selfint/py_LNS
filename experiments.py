@@ -7,6 +7,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 from plotter import *
+from graphMethods import get_largest_connected_component, get_degrees_of_vertices
 
 
 
@@ -80,7 +81,9 @@ def test_exp(map_path, agent_path, solver, verbose = True, n_paths = 2, temp = 1
         s = instance.instance(map_path, agent_path, solver)
         t = PathTable(s.num_of_rows, s.num_of_cols)
         solvers.random_initial_solution(s, t)
-        t.get_collisions_matrix(s.num_agents)
+        adj_matrix = t.get_collisions_matrix(s.num_agents)
+        subset = get_largest_connected_component(adj_matrix)
+        print(get_degrees_of_vertices(adj_matrix, subset))
         solver = solvers.IterativeRandomLNS(s, t, size)
         x_axis = range(solver.num_iterations + 1)
         solver.run()

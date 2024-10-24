@@ -45,7 +45,7 @@ class IterativeRandomLNS:
         self.num_iterations = num_iterations
         self.num_collisions = self.path_table.num_collisions()
         self.collision_statistics = [self.num_collisions]
-        self.destroy_heuristic = DestroyMethods.PriorityDestroyHeuristic (instance, path_table, subset_size)
+        self.destroy_heuristic = DestroyMethods.PriorityDestroyHeuristic(instance, path_table, subset_size)
 
 
 

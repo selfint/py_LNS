@@ -1,6 +1,8 @@
 import numpy as np
 import instance
 import PathTable
+from graphMethods import get_largest_connected_component, get_degrees_of_vertices
+
 
 class DestroyHeuristic:
     def __init__(self, instance: instance.instance, path_table:PathTable.PathTable, subset_size):
@@ -16,6 +18,10 @@ class RandomDestroyHeuristic(DestroyHeuristic):
     def generate_subset(self):
         return np.random.choice(range(1, self.instance.num_agents+1), self.subset_size, replace=False)
 
+class ConnectedComponentDestroyHeuristic(DestroyHeuristic):
+    def generate_subset(self):
+        adj_matrix = self.path_table.get_collisions_matrix(self.instance.num_agents)
+        return get_largest_connected_component(adj_matrix)
 
 class PriorityDestroyHeuristic(DestroyHeuristic):
     def generate_subset(self):

@@ -1,3 +1,5 @@
+import itertools
+import numpy as np
 class PathTable:
     def __init__(self, num_of_rows, num_of_cols):
         self.table = dict()
@@ -54,6 +56,16 @@ class PathTable:
                 if len(point_set) > 1:
                     count += 1
         return count
+
+    def get_collisions_matrix(self, num_robots):
+        matrix = np.zeros((num_robots+1,num_robots+1))
+        for time_list in self.table.values():
+            for point_set in time_list:
+                if len(point_set) > 1:
+                    for i,j in itertools.combinations(point_set, 2):
+                        matrix[i,j] = 1
+                        matrix[j,i] = 1
+        return matrix
 
 
 

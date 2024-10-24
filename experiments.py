@@ -69,3 +69,24 @@ def group_size_ablation(map_path, agent_path, solver, verbose = True, n_paths = 
     y_axis_label = 'collision counts'
     y_labels = [f'subset size = {size}' for size in group_sizes]
     plot_line_graphs(x_axis, collision_counts, label, x_axis_label,y_axis_label, y_labels)
+
+
+def test_exp(map_path, agent_path, solver, verbose = True, n_paths = 2, temp = 1):
+    #open('test.csv', "a")
+    group_sizes = [5]#range(1, 12)
+    collision_counts = []
+    x_axis = []
+    for size in group_sizes:
+        s = instance.instance(map_path, agent_path, solver)
+        t = PathTable(s.num_of_rows, s.num_of_cols)
+        solvers.random_initial_solution(s, t)
+        t.get_collisions_matrix(s.num_agents)
+        solver = solvers.IterativeRandomLNS(s, t, size)
+        x_axis = range(solver.num_iterations + 1)
+        solver.run()
+        collision_counts += [solver.collision_statistics]
+    label = 'num_of_cols in random PP LNS (varying group sizes, 1000 iteration)'
+    x_axis_label = 'iterations'
+    y_axis_label = 'collision counts'
+    y_labels = [f'subset size = {size}' for size in group_sizes]
+    plot_line_graphs(x_axis, collision_counts, label, x_axis_label,y_axis_label, y_labels)

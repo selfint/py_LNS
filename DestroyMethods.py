@@ -15,27 +15,49 @@ class DestroyHeuristic:
 
 
 class RandomDestroyHeuristic(DestroyHeuristic):
-    def generate_subset(self):
-        return np.random.choice(range(1, self.instance.num_agents+1), self.subset_size, replace=False)
+    def generate_subset(self, initial_subset = []):
+        # Remove chosen agents from available options
+        random_ids = [agent_id for agent_id in range(1, self.instance.num_agents+1) if agent_id not in initial_subset]
+
+        # Calculate number of agents left to choose
+        random_size = self.subset_size - len(initial_subset)
+
+        # Choose random agents
+        subset = initial_subset + np.random.choice(random_ids, random_size, replace=False).tolist()
+        return subset
 
 class ConnectedComponentDestroyHeuristic(DestroyHeuristic):
-    def generate_subset(self):
+    def generate_subset(self, complete_random = True):
         adj_matrix = self.path_table.get_collisions_matrix(self.instance.num_agents)
-        return get_largest_connected_component(adj_matrix)
+        largest_cc = get_largest_connected_component(adj_matrix)
+        if len(largest_cc) > self.subset_size:
+            return largest_cc[:self.subset_size]
+        if len(largest_cc) < self.subset_size:
+            random_dh = RandomDestroyHeuristic(self.instance, self.path_table, self.subset_size)
+            return random_dh.generate_subset(initial_subset=largest_cc)
+        return largest_cc
 
-class PriorityDestroyHeuristic(DestroyHeuristic):
+
+class ArgmaxDestroyHeuristic(DestroyHeuristic):
     def generate_subset(self):
-        argmax_size = min(3, self.subset_size)
-        random_size = self.subset_size - argmax_size
         cols = []
         for agent in self.instance.agents.values():
             path = agent.paths[agent.path_id]
             cols += [self.path_table.count_collisions_along_existing_path(path)]
         cols = np.array(cols)
+        argmax_incides = np.argpartition(cols, -self.subset_size)[-self.subset_size:]
+        argmax_ids = (argmax_incides + 1).tolist()
+        return argmax_ids
+
+
+class PriorityDestroyHeuristic(DestroyHeuristic):
+    def generate_subset(self, argmax_size = 0):
+        random_size = self.subset_size - argmax_size
+        cols = []
         argmax_ids = []
         if argmax_size > 0:
-            argmax_incides = np.argpartition(cols, -argmax_size)[-argmax_size:]
-            argmax_ids = (argmax_incides+1).tolist()
+            argmax_dh = ArgmaxDestroyHeuristic(self.instance, self.path_table, argmax_size)
+            argmax_ids = argmax_dh.generate_subset()
         random_ids = [agent_id for agent_id in range(1, self.instance.num_agents+1) if agent_id not in argmax_ids]
         subset = argmax_ids + np.random.choice(random_ids, random_size, replace=False).tolist()
         return subset

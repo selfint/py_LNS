@@ -71,20 +71,42 @@ def group_size_ablation(map_path, agent_path, solver, verbose = True, n_paths = 
     y_labels = [f'subset size = {size}' for size in group_sizes]
     plot_line_graphs(x_axis, collision_counts, label, x_axis_label,y_axis_label, y_labels)
 
-
-def test_exp(map_path, agent_path, solver, verbose = True, n_paths = 2, temp = 1):
+def exhaustive_vs_random_exp(map_path, agent_path, solver, verbose = True, n_paths = 5, temp = 1):
     #open('test.csv', "a")
-    group_sizes = [5]#range(1, 12)
+    solvers_list = ['pp', 'exhaustive']#range(1, 12)
     collision_counts = []
     x_axis = []
-    for size in group_sizes:
-        s = instance.instance(map_path, agent_path, solver)
+    for solver in solvers_list:
+        s = instance.instance(map_path, agent_path, solver, verbose, n_paths, temp)
         t = PathTable(s.num_of_rows, s.num_of_cols)
         solvers.random_initial_solution(s, t)
         adj_matrix = t.get_collisions_matrix(s.num_agents)
         subset = get_largest_connected_component(adj_matrix)
         print(get_degrees_of_vertices(adj_matrix, subset))
-        solver = solvers.IterativeRandomLNS(s, t, size)
+        solver = solvers.IterativeRandomLNS(s, t, 3, destroy_method_name='random', num_iterations= 1000, low_level_solver_name=solver)
+        x_axis = range(solver.num_iterations + 1)
+        solver.run()
+        collision_counts += [solver.collision_statistics]
+    label = 'num_of_cols in random PP LNS (varying solvers, 1000 iteration)'
+    x_axis_label = 'iterations'
+    y_axis_label = 'collision counts'
+    y_labels = solvers_list
+    plot_line_graphs(x_axis, collision_counts, label, x_axis_label,y_axis_label, y_labels)
+
+
+def test_exp(map_path, agent_path, solver, verbose = True, n_paths = 2, temp = 1):
+    #open('test.csv', "a")
+    group_sizes = [3]#range(1, 12)
+    collision_counts = []
+    x_axis = []
+    for size in group_sizes:
+        s = instance.instance(map_path, agent_path, solver)
+        t = PathTable(s.num_of_rows, s.num_of_cols)
+        solvers.generate_random_random_solution_iterative(s, t)
+        adj_matrix = t.get_collisions_matrix(s.num_agents)
+        subset = get_largest_connected_component(adj_matrix)
+        print(get_degrees_of_vertices(adj_matrix, subset))
+        solver = solvers.IterativeRandomLNS(s, t, size, destroy_method_name='cc', num_iterations= 10000)
         x_axis = range(solver.num_iterations + 1)
         solver.run()
         collision_counts += [solver.collision_statistics]

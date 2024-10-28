@@ -2,7 +2,7 @@ import PathTable
 import instance
 import PathTable
 import numpy as np
-from LowLevelSolvers import PPNeighborhoodRepair
+from LowLevelSolvers import PPNeighborhoodRepair, ExhaustiveNeighborhoodRepair
 import DestroyMethods
 
 def random_initial_solution(instance: instance.instance, path_table: PathTable.PathTable):
@@ -10,6 +10,11 @@ def random_initial_solution(instance: instance.instance, path_table: PathTable.P
     for agent_id, path_idx in zip(instance.agents.keys(), random_path_selection):
         path_table.insert_path(agent_id, instance.agents[agent_id].paths[path_idx])
         instance.agents[agent_id].path_id = path_idx
+
+def generate_random_random_solution_iterative(instance: instance.instance, path_table: PathTable.PathTable, iterations = 200):
+    random_initial_solution(instance, path_table) # Choose random paths as initial solution
+    solver = IterativeRandomLNS(instance, path_table, 3, num_iterations = iterations)
+    solver.run()
 class RandomPP:
     def __init__(self, instance: instance.instance, path_table:PathTable.PathTable):
         self.instance = instance
@@ -37,7 +42,7 @@ class RandomPP:
 
 
 class IterativeRandomLNS:
-    def __init__(self, instance: instance.instance, path_table:PathTable.PathTable, subset_size, num_iterations = 3000):
+    def __init__(self, instance: instance.instance, path_table:PathTable.PathTable, subset_size, num_iterations = 1000, destroy_method_name = 'priority', low_level_solver_name = 'pp'):
         self.instance = instance
         self.path_table = path_table
         self.subset_size = subset_size
@@ -45,7 +50,15 @@ class IterativeRandomLNS:
         self.num_iterations = num_iterations
         self.num_collisions = self.path_table.num_collisions()
         self.collision_statistics = [self.num_collisions]
-        self.destroy_heuristic = DestroyMethods.PriorityDestroyHeuristic(instance, path_table, subset_size)
+        destroy_methods = {'random': DestroyMethods.RandomDestroyHeuristic,
+                           'priority': DestroyMethods.PriorityDestroyHeuristic,
+                           'cc': DestroyMethods.ConnectedComponentDestroyHeuristic}
+        dm = destroy_methods[destroy_method_name]
+        self.destroy_heuristic = dm(instance, path_table, subset_size)
+
+        solvers_list = {'pp': PPNeighborhoodRepair,
+                        'exhaustive': ExhaustiveNeighborhoodRepair}
+        self.low_level_solver = solvers_list[low_level_solver_name]
 
 
 
@@ -55,7 +68,7 @@ class IterativeRandomLNS:
         print(subset)
         if self.verbose:
             print(f'\n**** Initial number of collisions: {self.num_collisions} ****')
-        low_level_solver = PPNeighborhoodRepair(self.instance, self.path_table, subset, verbose=False)
+        low_level_solver = self.low_level_solver(self.instance, self.path_table, subset, verbose=False)
         low_level_solver.run()
         new_num_collisions = self.path_table.num_collisions()
         if new_num_collisions < self.num_collisions:

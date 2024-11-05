@@ -4,8 +4,11 @@ from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import connected_components
 
 
-def get_degrees_of_vertices(adj_matrix, vertex_list):
+def get_degrees_of_vertices_dict(adj_matrix, vertex_list):
     return {v: adj_matrix[v].sum() for v in vertex_list}
+
+def get_degrees_of_all_vertices(adj_matrix):
+    return adj_matrix[1:].sum(axis = 1)
 
 def get_largest_connected_component(matrix):
     graph = csr_matrix(matrix)

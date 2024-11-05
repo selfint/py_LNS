@@ -51,6 +51,7 @@ class IterativeRandomLNS:
         self.num_collisions = self.path_table.num_collisions()
         self.collision_statistics = [self.num_collisions]
         destroy_methods = {'random': DestroyMethods.RandomDestroyHeuristic,
+                           'w-random': DestroyMethods.RandomWeightedDestroyHeuristic,
                            'priority': DestroyMethods.PriorityDestroyHeuristic,
                            'cc': DestroyMethods.ConnectedComponentDestroyHeuristic}
         dm = destroy_methods[destroy_method_name]

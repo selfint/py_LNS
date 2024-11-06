@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from plotter import *
 from graphMethods import get_largest_connected_component, get_degrees_of_vertices_dict
-
+import itertools
 
 
 def run_scenario(map_path, agent_path, solver, log_file = 'experiments.csv', verbose = True, n_paths = 2, temp = 1):
@@ -113,24 +113,25 @@ def destroy_method_ablation_exp(map_path, agent_path, solver_name, verbose = Tru
     plot_line_graphs(x_axis, collision_counts, label, x_axis_label,y_axis_label, y_labels)
 
 
-def test_exp(map_path, agent_path, solver, verbose = True, n_paths = 2, temp = 1):
+def test_exp(map_path, agent_path, solver_name, verbose = True, n_paths = 3, temp = 1):
     #open('test.csv', "a")
-    group_sizes = [3]#range(1, 12)
+    group_sizes = [3,4,5]#range(1, 12)
+    solvers_list = ['pp','rank-pp']#range(1, 12)
+    variants = list(itertools.product(group_sizes, solvers_list))
     collision_counts = []
     x_axis = []
-    for size in group_sizes:
-        s = instance.instance(map_path, agent_path, solver)
+    for size, solver_name in variants:
+        s = instance.instance(map_path, agent_path, solver_name, n_paths = n_paths)
         t = PathTable(s.num_of_rows, s.num_of_cols)
-        solvers.random_initial_solution(s, t)
-        adj_matrix = t.get_collisions_matrix(s.num_agents)
-        subset = get_largest_connected_component(adj_matrix)
-        print(get_degrees_of_vertices_dict(adj_matrix, subset))
-        solver = solvers.IterativeRandomLNS(s, t, size, destroy_method_name='w-random', num_iterations= 10000)
+        solvers.generate_random_random_solution_iterative(s, t)
+        #print(t.get_collisions_matrix(s.num_agents).sum(axis=1))
+        #t.get_agent_collisions_for_paths(s.agents[2], s.num_agents)
+        solver = solvers.IterativeRandomLNS(s, t, size, destroy_method_name='w-random',low_level_solver_name = solver_name, num_iterations= 1000)
         x_axis = range(solver.num_iterations + 1)
         solver.run()
         collision_counts += [solver.collision_statistics]
-    label = 'num_of_cols in random PP LNS (varying group sizes, 1000 iteration)'
+    label = 'num_of_cols in random PP LNS (varying group sizes and solvers, 1000 iteration)'
     x_axis_label = 'iterations'
     y_axis_label = 'collision counts'
-    y_labels = [f'subset size = {size}' for size in group_sizes]
+    y_labels = [f'subset size = {size}, solver = {solver}' for size, solver in variants]
     plot_line_graphs(x_axis, collision_counts, label, x_axis_label,y_axis_label, y_labels)

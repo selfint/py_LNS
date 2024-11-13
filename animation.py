@@ -18,6 +18,7 @@ class FrameObjects(NamedTuple):
     agent_img: dict[int, mpimg.AxesImage]
     agent_txt_start: dict[int, plt.Text]
     agent_txt_end: dict[int, plt.Text]
+    collision_texts: list[plt.Text]
 
 
 def setup(
@@ -47,6 +48,8 @@ def setup(
         inst.num_of_rows, inst.num_of_cols
     )
 
+    max_timestamp = np.max([len(path_table.table[loc]) for loc in path_table.table])
+
     # fill grid at start_time
     grid_2d = np.zeros((inst.num_agents, inst.num_of_rows, inst.num_of_cols))
     for row, col in path_table.table:
@@ -66,6 +69,23 @@ def setup(
             collisions.append((agent_id, agent))
         else:
             no_collisions.append((agent_id, agent))
+
+    collisions_2d = np.zeros((inst.num_of_rows, inst.num_of_cols))
+    relevant_ids = set(agent_id for agent_id, _ in collisions[:max_paths])
+    for agent_id, agent in collisions[:max_paths]:
+        for timestamp, (row, col) in enumerate(agent.paths[agent.path_id]):
+            others = set(path_table.table[(row, col)][timestamp])
+
+            # check if there are other agents in the same cell
+            if len(others & relevant_ids) > 1:
+                collisions_2d[row][col] = timestamp
+
+    collision_texts = [[] for _ in range(max_timestamp)]
+    for x, y in zip(*np.where(collisions_2d)):
+        timestamp = int(collisions_2d[x][y])
+        collision_texts[timestamp].append(
+            ax.text(y, x, " ", color="red", ha="center", va="center", fontsize=8)
+        )
 
     if verbose:
         print("No collisions:", len(no_collisions))
@@ -148,7 +168,7 @@ def setup(
     ax.set_xticks([])
     ax.set_yticks([])
 
-    return FrameObjects(bg, agent_img, agent_txt_start, agent_txt_end)
+    return FrameObjects(bg, agent_img, agent_txt_start, agent_txt_end, collision_texts)
 
 
 def update_frame(
@@ -167,14 +187,11 @@ def update_frame(
         frame_objects: FrameObjects object
     """
 
-    print("Timestamp:", timestamp)
-
     # fill grid, at specific timestamp
     grid_2d = np.zeros((inst.num_agents, inst.num_of_rows, inst.num_of_cols))
     for row, col in path_table.table:
         if len(path_table.table[(row, col)]) > timestamp:
             for agent_id in path_table.table[(row, col)][timestamp]:
-                print(agent_id)
                 grid_2d[agent_id - 1][row][col] = 1
 
     frame_objects.bg.set_data(inst.map)
@@ -185,12 +202,24 @@ def update_frame(
         frame_objects.agent_txt_start[agent_id].set_text(f"S{agent_id}")
         frame_objects.agent_txt_end[agent_id].set_text(f"E{agent_id}")
 
+    # update collision texts
+    for texts in frame_objects.collision_texts[:timestamp]:
+        for txt in texts:
+            txt.set_text("X")
+    for texts in frame_objects.collision_texts[timestamp:]:
+        for txt in texts:
+            txt.set_text(" ")
+
     # unpack and return
+    flat_collisions_texts = [
+        txt for sublist in frame_objects.collision_texts for txt in sublist
+    ]
     return [
         frame_objects.bg,
         *frame_objects.agent_img.values(),
         *frame_objects.agent_txt_start.values(),
         *frame_objects.agent_txt_end.values(),
+        *flat_collisions_texts,
     ]
 
 
@@ -201,18 +230,17 @@ def animate(
     ax: plt.Axes,
     max_paths: int = 10,
     verbose: bool = False,
-) -> None:
+) -> FuncAnimation:
     """
-    Visualize agent paths on the grid.
+    Animate agent paths on the grid.
 
     Note:
-        Will not visualize agents that do not have a path (path_id == -1).
+        Will not render if the returned FuncAnimation object is not saved.
+        See example below.
 
-    Args:
-        inst: instance object
-        path_table: PathTable object
-        max_plots: maximum number of agents to plot
-        filename: filename to save the plot
+    Example:
+        >>> ani = animation.animate(inst, path_table, fig, ax, max_paths=100, verbose=verbose)
+        >>> ani.save("animation.gif", writer=PillowWriter(fps=2))
     """
 
     # check bounds

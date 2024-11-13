@@ -12,8 +12,8 @@ from PathTable import PathTable
 def visualize(
     inst: instance.instance,
     path_table: PathTable,
+    ax: plt.Axes,
     max_paths: int = 10,
-    filename: str = None,
     verbose: bool = False,
 ) -> None:
     """
@@ -42,8 +42,7 @@ def visualize(
             for agent_id in timestamp:
                 grid_2d[agent_id - 1][row][col] = 1
 
-    # plot map
-    plt.imshow(inst.map, cmap=ListedColormap([(1, 1, 1, 0), (0, 0, 0, 1)]))
+    ax.imshow(inst.map, cmap=ListedColormap([(1, 1, 1, 0), (0, 0, 0, 1)]))
 
     # get agent collisions
     no_collisions = []
@@ -76,16 +75,16 @@ def visualize(
         # generate random colors
         r, g, b = colorsys.hls_to_rgb(np.random.rand(), 0.5, 0.5)
         colors = [(1, 1, 1, 0), (r, g, b, 0.3)]
-        plt.imshow(agent_grid, cmap=ListedColormap(colors), interpolation="nearest")
+        ax.imshow(agent_grid, cmap=ListedColormap(colors), interpolation="nearest")
 
         # mark start and end
         y, x = agent.start
-        plt.text(
+        ax.text(
             x, y, f"S{agent_id}", color="black", ha="center", va="center", fontsize=4
         )
 
         y, x = agent.end
-        plt.text(
+        ax.text(
             x, y, f"E{agent_id}", color="black", ha="center", va="center", fontsize=4
         )
 
@@ -95,8 +94,7 @@ def visualize(
         )
 
     # configure plot
-    plt.title("Agent paths")
-    ax = plt.gca()
+    ax.set_title("Agent paths")
 
     ax.legend(
         handles=legend_patches,
@@ -129,11 +127,5 @@ def visualize(
     ax.tick_params(which="minor", bottom=False, left=False)
 
     # clear axis labels
-    plt.xticks([])
-    plt.yticks([])
-
-    plt.tight_layout()
-
-    if filename is not None:
-        plt.savefig(filename)
-    plt.show()
+    ax.set_xticks([])
+    ax.set_yticks([])

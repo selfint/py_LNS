@@ -240,7 +240,10 @@ def animate(
 
     Example:
         >>> ani = animation.animate(inst, path_table, fig, ax, max_paths=100, verbose=verbose)
+        >>> # save as gif
         >>> ani.save("animation.gif", writer=PillowWriter(fps=2))
+        >>> # save as mp4 (requires ffmpeg)
+        >>> ani.save("animation.mp4", writer="ffmpeg", fps=2)
     """
 
     # check bounds

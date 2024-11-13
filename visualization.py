@@ -59,9 +59,13 @@ def visualize(
             no_collisions.append((agent_id, agent))
 
     collisions_2d = np.zeros((inst.num_of_rows, inst.num_of_cols))
+    relevant_ids = set(agent_id for agent_id, _ in collisions[:max_paths])
     for agent_id, agent in collisions[:max_paths]:
         for timestamp, (row, col) in enumerate(agent.paths[agent.path_id]):
-            if len(path_table.table[(row, col)][timestamp]) > 1:
+            others = set(path_table.table[(row, col)][timestamp])
+
+            # check if there are other agents in the same cell
+            if len(others & relevant_ids) > 1:
                 collisions_2d[row][col] = 1
 
     for x, y in zip(*np.where(collisions_2d)):

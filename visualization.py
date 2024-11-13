@@ -48,6 +48,9 @@ def visualize(
     no_collisions = []
     collisions = []
     for agent_id, agent in inst.agents.items():
+        if agent.path_id == -1:
+            continue
+
         cmatrix = path_table.get_agent_collisions_for_paths(agent, inst.num_agents)
         does_collide = cmatrix[agent.path_id] > 0
         if does_collide:
@@ -55,21 +58,22 @@ def visualize(
         else:
             no_collisions.append((agent_id, agent))
 
+    collisions_2d = np.zeros((inst.num_of_rows, inst.num_of_cols))
+    for agent_id, agent in collisions[:max_paths]:
+        for timestamp, (row, col) in enumerate(agent.paths[agent.path_id]):
+            if len(path_table.table[(row, col)][timestamp]) > 1:
+                collisions_2d[row][col] = 1
+
+    for x, y in zip(*np.where(collisions_2d)):
+        ax.text(y, x, "X", color="red", ha="center", va="center", fontsize=8)
+
     if verbose:
         print("No collisions:", len(no_collisions))
         print("Collisions:", len(collisions))
 
     # plot agent paths
     legend_patches = []
-    did_plot = 0
-    for agent_id, agent in collisions:
-        if agent.path_id == -1:
-            continue
-
-        did_plot += 1
-        if did_plot >= max_paths:
-            break
-
+    for agent_id, agent in collisions[:max_paths]:
         agent_grid = grid_2d[agent_id - 1]
 
         # generate random colors

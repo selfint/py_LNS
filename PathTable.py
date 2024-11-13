@@ -1,5 +1,6 @@
 import itertools
 import numpy as np
+import Agent
 class PathTable:
     def __init__(self, num_of_rows, num_of_cols):
         self.table = dict()
@@ -35,14 +36,14 @@ class PathTable:
                 return False
         return True
 
-    def count_collisions_along_path(self, path):
+    def count_collisions_points_along_path(self, path):
         count = 0
         for loc, t in zip(path, range(len(path))):
             if len(self.table[tuple(loc)]) > t and len(self.table[tuple(loc)][t]) > 0:
                 count += 1
         return count
 
-    def count_collisions_along_existing_path(self, path):
+    def count_collisions_points_along_existing_path(self, path):
         count = 0
         for loc, t in zip(path, range(len(path))):
             if len(self.table[tuple(loc)]) > t and len(self.table[tuple(loc)][t]) > 1:
@@ -66,6 +67,18 @@ class PathTable:
                         matrix[i, j] = 1
                         matrix[j, i] = 1
         return matrix.astype(int)
+
+    def get_agent_collisions_for_paths(self, agent: Agent.Agent, num_robots):
+        n_paths = agent.n_paths
+        matrix = np.zeros((n_paths,num_robots+1))
+        for path_index, path in enumerate(agent.paths):
+            for loc, t in zip(path, range(len(path))):
+                if len(self.table[tuple(loc)]) > t:
+                    for colliding_agent_id in self.table[tuple(loc)][t]:
+                        if colliding_agent_id != agent.id:
+                            print(f'**** agent {agent.id} collides with agent {colliding_agent_id}')
+                            matrix[path_index][colliding_agent_id] = 1
+        return matrix.sum(axis = 1).astype(int).tolist()
 
 
 

@@ -44,7 +44,7 @@ class ArgmaxDestroyHeuristic(DestroyHeuristic):
         cols = []
         for agent in self.instance.agents.values():
             path = agent.paths[agent.path_id]
-            cols += [self.path_table.count_collisions_along_existing_path(path)]
+            cols += [self.path_table.count_collisions_points_along_existing_path(path)]
         cols = np.array(cols)
         argmax_incides = np.argpartition(cols, -self.subset_size)[-self.subset_size:]
         argmax_ids = (argmax_incides + 1).tolist()

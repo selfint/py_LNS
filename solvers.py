@@ -2,7 +2,7 @@ import PathTable
 import instance
 import PathTable
 import numpy as np
-from LowLevelSolvers import PPNeighborhoodRepair, ExhaustiveNeighborhoodRepair
+from LowLevelSolvers import PPNeighborhoodRepair, ExhaustiveNeighborhoodRepair, RankPPNeighborhoodRepair
 import DestroyMethods
 
 def random_initial_solution(instance: instance.instance, path_table: PathTable.PathTable):
@@ -58,6 +58,7 @@ class IterativeRandomLNS:
         self.destroy_heuristic = dm(instance, path_table, subset_size)
 
         solvers_list = {'pp': PPNeighborhoodRepair,
+                        'rank-pp': RankPPNeighborhoodRepair,
                         'exhaustive': ExhaustiveNeighborhoodRepair}
         self.low_level_solver = solvers_list[low_level_solver_name]
 
@@ -69,7 +70,7 @@ class IterativeRandomLNS:
         print(subset)
         if self.verbose:
             print(f'\n**** Initial number of collisions: {self.num_collisions} ****')
-        low_level_solver = self.low_level_solver(self.instance, self.path_table, subset, verbose=False)
+        low_level_solver = self.low_level_solver(agent_cost_type = 'mean', instance = self.instance,path_table =  self.path_table, agent_subset = subset, verbose=False)
         low_level_solver.run()
         new_num_collisions = self.path_table.num_collisions()
         if new_num_collisions < self.num_collisions:

@@ -12,12 +12,15 @@ from PathTable import PathTable
 def visualize(
     inst: instance.instance,
     path_table: PathTable,
-    max_plots=10,
+    max_paths: int = 10,
     filename: str = None,
     verbose: bool = False,
 ) -> None:
     """
     Visualize agent paths on the grid.
+
+    Note:
+        Will not visualize agents that do not have a path (path_id == -1).
 
     Args:
         inst: instance object
@@ -59,7 +62,15 @@ def visualize(
 
     # plot agent paths
     legend_patches = []
-    for agent_id, agent in collisions[:max_plots]:
+    did_plot = 0
+    for agent_id, agent in collisions:
+        if agent.path_id == -1:
+            continue
+
+        did_plot += 1
+        if did_plot >= max_paths:
+            break
+
         agent_grid = grid_2d[agent_id - 1]
 
         # generate random colors
@@ -124,5 +135,5 @@ def visualize(
     plt.tight_layout()
 
     if filename is not None:
-        plt.savefig("fig1.png")
+        plt.savefig(filename)
     plt.show()

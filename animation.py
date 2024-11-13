@@ -109,7 +109,7 @@ def setup(
 
         # generate random colors
         r, g, b = colorsys.hls_to_rgb(np.random.rand(), 0.5, 0.5)
-        colors = [(1, 1, 1, 0), (r, g, b, 1)]
+        colors = [(1, 1, 1, 0), (r, g, b, 0.3)]
 
         agent_img[agent_id] = ax.imshow(
             agent_grid, cmap=ListedColormap(colors), interpolation="nearest"
@@ -203,10 +203,10 @@ def update_frame(
         frame_objects.agent_txt_end[agent_id].set_text(f"E{agent_id}")
 
     # update collision texts
-    for texts in frame_objects.collision_texts[:timestamp]:
+    for texts in frame_objects.collision_texts[: timestamp + 1]:
         for txt in texts:
             txt.set_text("X")
-    for texts in frame_objects.collision_texts[timestamp:]:
+    for texts in frame_objects.collision_texts[timestamp + 1 :]:
         for txt in texts:
             txt.set_text(" ")
 

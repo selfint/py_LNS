@@ -12,6 +12,8 @@ class PathTable:
     contains the agent ids that are at location (i,j) at time t.
     """
 
+    table: dict[tuple[int, int], list[set[int]]]
+
     def __init__(self, num_of_rows, num_of_cols):
         self.table = dict()
         for i in range(0, num_of_rows+1):

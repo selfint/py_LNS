@@ -59,7 +59,7 @@ def visualize(
 
     # plot agent paths
     legend_patches = []
-    for agent_id, agent in no_collisions[:max_plots]:
+    for agent_id, agent in collisions[:max_plots]:
         agent_grid = grid_2d[agent_id - 1]
 
         # generate random colors

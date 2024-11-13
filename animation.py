@@ -12,6 +12,9 @@ from matplotlib.animation import FuncAnimation
 import instance
 from PathTable import PathTable
 
+agent_alpha: float = 0.5
+obstacle_alpha: float = 0.3
+
 
 class FrameObjects(NamedTuple):
     bg: mpimg.AxesImage
@@ -19,6 +22,8 @@ class FrameObjects(NamedTuple):
     agent_txt_start: dict[int, plt.Text]
     agent_txt_end: dict[int, plt.Text]
     collision_texts: list[plt.Text]
+    arrows: dict[int, plt.Arrow]
+    agent_colors: dict[int, tuple]
 
 
 def setup(
@@ -57,7 +62,9 @@ def setup(
             for agent_id in path_table.table[(row, col)][start_time]:
                 grid_2d[agent_id - 1][row][col] = 1
 
-    bg = ax.imshow(inst.map, cmap=ListedColormap([(1, 1, 1, 0), (0, 0, 0, 1)]))
+    bg = ax.imshow(
+        inst.map, cmap=ListedColormap([(1, 1, 1, 0), (0, 0, 0, obstacle_alpha)])
+    )
 
     # get agent collisions
     no_collisions = []
@@ -97,6 +104,8 @@ def setup(
     agent_img = {}
     agent_txt_start = {}
     agent_txt_end = {}
+    arrows = {}
+    agent_colors = {}
     for agent_id, agent in collisions:
         if agent.path_id == -1:
             continue
@@ -109,8 +118,9 @@ def setup(
 
         # generate random colors
         r, g, b = colorsys.hls_to_rgb(np.random.rand(), 0.5, 0.5)
-        colors = [(1, 1, 1, 0), (r, g, b, 0.3)]
 
+        colors = [(1, 1, 1, 0), (r, g, b, agent_alpha)]
+        agent_colors[agent_id] = (r, g, b, agent_alpha)
         agent_img[agent_id] = ax.imshow(
             agent_grid, cmap=ListedColormap(colors), interpolation="nearest"
         )
@@ -126,9 +136,25 @@ def setup(
             x, y, f"E{agent_id}", color="black", ha="center", va="center", fontsize=4
         )
 
+        # add arrow
+        y, x = agent.paths[agent.path_id][0]
+        ny, nx = agent.paths[agent.path_id][1]
+        dy = ny - y
+        dx = nx - x
+        arrow = mpatches.Arrow(
+            x,
+            y,
+            dx,
+            dy,
+            color=(r, g, b, agent_alpha),
+            width=0.1,
+        )
+
+        arrows[agent_id] = ax.add_patch(arrow)
+
         # add legend entry
         legend_patches.append(
-            mpatches.Patch(color=(r, g, b, 0.3), label=f"Agent {agent_id}")
+            mpatches.Patch(color=(r, g, b, agent_alpha), label=f"Agent {agent_id}")
         )
 
     # configure plot
@@ -168,7 +194,15 @@ def setup(
     ax.set_xticks([])
     ax.set_yticks([])
 
-    return FrameObjects(bg, agent_img, agent_txt_start, agent_txt_end, collision_texts)
+    return FrameObjects(
+        bg,
+        agent_img,
+        agent_txt_start,
+        agent_txt_end,
+        collision_texts,
+        arrows,
+        agent_colors,
+    )
 
 
 def update_frame(
@@ -176,6 +210,7 @@ def update_frame(
     path_table: PathTable,
     timestamp: int,
     frame_objects: FrameObjects,
+    ax: plt.Axes,
 ) -> list:
     """
     Update the frame objects with the current timestamp.
@@ -210,6 +245,32 @@ def update_frame(
         for txt in texts:
             txt.set_text(" ")
 
+    # update arrows
+    for agent_id in frame_objects.arrows:
+        if frame_objects.arrows[agent_id] is not None:
+            frame_objects.arrows[agent_id].remove()
+
+        path = inst.agents[agent_id].paths[inst.agents[agent_id].path_id]
+        if timestamp + 1 >= len(path):
+            frame_objects.arrows[agent_id] = None
+            continue
+
+        y, x = path[timestamp]
+        ny, nx = path[timestamp + 1]
+        dy = ny - y
+        dx = nx - x
+
+        arrow = mpatches.Arrow(
+            x,
+            y,
+            dx,
+            dy,
+            color=frame_objects.agent_colors[agent_id],
+            width=0.1,
+        )
+
+        frame_objects.arrows[agent_id] = ax.add_patch(arrow)
+
     # unpack and return
     flat_collisions_texts = [
         txt for sublist in frame_objects.collision_texts for txt in sublist
@@ -220,6 +281,7 @@ def update_frame(
         *frame_objects.agent_txt_start.values(),
         *frame_objects.agent_txt_end.values(),
         *flat_collisions_texts,
+        *[arrow for arrow in frame_objects.arrows.values() if arrow is not None],
     ]
 
 
@@ -258,7 +320,7 @@ def animate(
     frame_objects = setup(inst, path_table, ax, 0, max_paths, verbose)
 
     def update_frame_wrapper(timestamp):
-        return update_frame(inst, path_table, timestamp, frame_objects)
+        return update_frame(inst, path_table, timestamp, frame_objects, ax)
 
     ani = FuncAnimation(
         fig, update_frame_wrapper, frames=max_time, interval=100, blit=True

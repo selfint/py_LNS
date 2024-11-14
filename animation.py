@@ -89,7 +89,7 @@ def setup(
     for x, y in zip(*np.where(collisions_2d)):
         timestamp = int(collisions_2d[x][y])
         collision_texts[timestamp].append(
-            ax.text(y, x, " ", color="red", ha="center", va="center", fontsize=8)
+            ax.text(y, x, " ", color="red", ha="center", va="center", fontsize=16)
         )
 
     if verbose:
@@ -117,9 +117,7 @@ def setup(
 
         colors = [(1, 1, 1, 0), (r, g, b, agent_alpha)]
         agent_colors[agent_id] = (r, g, b, agent_alpha)
-        agent_img[agent_id] = ax.imshow(
-            agent_grid, cmap=ListedColormap(colors), interpolation="nearest"
-        )
+        agent_img[agent_id] = ax.imshow(agent_grid, cmap=ListedColormap(colors))
 
         # plot agent path
         path = agent.paths[agent.path_id]
@@ -128,17 +126,6 @@ def setup(
 
         ax.plot(path_x, path_y, color=(r, g, b, agent_alpha), linewidth=1)
         ax.scatter(path_x[-1], path_y[-1], color=(r, g, b, agent_alpha), s=10)
-
-        # mark start and end
-        # y, x = agent.start
-        # ax.text(
-        #     x, y, f"S{agent_id}", color="black", ha="center", va="center", fontsize=4
-        # )
-
-        # y, x = agent.end
-        # ax.text(
-        #     x, y, f"E{agent_id}", color="black", ha="center", va="center", fontsize=4
-        # )
 
         # add arrow
         y, x = agent.paths[agent.path_id][0]
@@ -166,9 +153,9 @@ def setup(
 
     ax.legend(
         handles=legend_patches,
-        loc="upper center",  # Position legend at the top center
-        bbox_to_anchor=(0.5, -0.1),  # Move legend below the plot
-        ncol=3,  # Adjust number of columns to fit your needs
+        loc="upper left",  # Position legend at the top center
+        bbox_to_anchor=(1, 1),
+        ncol=int(len(legend_patches) / 25) + 1,
         frameon=False,
     )
 
@@ -235,7 +222,8 @@ def update_frame(
 
     # update agent paths
     for agent_id in frame_objects.agent_img:
-        frame_objects.agent_img[agent_id].set_data(grid_2d[agent_id - 1])
+        agent_grid = grid_2d[agent_id - 1]
+        frame_objects.agent_img[agent_id].set_data(agent_grid)
 
     # update collision texts
     for texts in frame_objects.collision_texts[: timestamp + 1]:

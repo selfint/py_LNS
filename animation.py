@@ -151,7 +151,7 @@ def setup(
             dx,
             dy,
             color=(r, g, b, agent_alpha),
-            width=0.1,
+            width=0.5,
         )
 
         arrows[agent_id] = ax.add_patch(arrow)
@@ -266,7 +266,7 @@ def update_frame(
             dx,
             dy,
             color=frame_objects.agent_colors[agent_id],
-            width=0.1,
+            width=0.5,
         )
 
         frame_objects.arrows[agent_id] = ax.add_patch(arrow)

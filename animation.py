@@ -19,8 +19,6 @@ obstacle_alpha: float = 0.2
 class FrameObjects(NamedTuple):
     bg: mpimg.AxesImage
     agent_img: dict[int, mpimg.AxesImage]
-    agent_txt_start: dict[int, plt.Text]
-    agent_txt_end: dict[int, plt.Text]
     collision_texts: list[plt.Text]
     arrows: dict[int, plt.Arrow]
     agent_colors: dict[int, tuple]
@@ -102,8 +100,6 @@ def setup(
     legend_patches = []
     did_plot = 0
     agent_img = {}
-    agent_txt_start = {}
-    agent_txt_end = {}
     arrows = {}
     agent_colors = {}
     for agent_id, agent in collisions:
@@ -130,18 +126,19 @@ def setup(
         path_x = path[:, 1]
         path_y = path[:, 0]
 
-        ax.plot(path_x, path_y, color=(r, g, b, 0.3), linewidth=1)
+        ax.plot(path_x, path_y, color=(r, g, b, agent_alpha), linewidth=1)
+        ax.scatter(path_x[-1], path_y[-1], color=(r, g, b, agent_alpha), s=10)
 
         # mark start and end
-        y, x = agent.start
-        agent_txt_start[agent_id] = ax.text(
-            x, y, f"S{agent_id}", color="black", ha="center", va="center", fontsize=4
-        )
+        # y, x = agent.start
+        # ax.text(
+        #     x, y, f"S{agent_id}", color="black", ha="center", va="center", fontsize=4
+        # )
 
-        y, x = agent.end
-        agent_txt_end[agent_id] = ax.text(
-            x, y, f"E{agent_id}", color="black", ha="center", va="center", fontsize=4
-        )
+        # y, x = agent.end
+        # ax.text(
+        #     x, y, f"E{agent_id}", color="black", ha="center", va="center", fontsize=4
+        # )
 
         # add arrow
         y, x = agent.paths[agent.path_id][0]
@@ -204,8 +201,6 @@ def setup(
     return FrameObjects(
         bg,
         agent_img,
-        agent_txt_start,
-        agent_txt_end,
         collision_texts,
         arrows,
         agent_colors,
@@ -241,8 +236,6 @@ def update_frame(
     # update agent paths
     for agent_id in frame_objects.agent_img:
         frame_objects.agent_img[agent_id].set_data(grid_2d[agent_id - 1])
-        frame_objects.agent_txt_start[agent_id].set_text(f"S{agent_id}")
-        frame_objects.agent_txt_end[agent_id].set_text(f"E{agent_id}")
 
     # update collision texts
     for texts in frame_objects.collision_texts[: timestamp + 1]:
@@ -285,8 +278,6 @@ def update_frame(
     return [
         frame_objects.bg,
         *frame_objects.agent_img.values(),
-        *frame_objects.agent_txt_start.values(),
-        *frame_objects.agent_txt_end.values(),
         *flat_collisions_texts,
         *[arrow for arrow in frame_objects.arrows.values() if arrow is not None],
     ]

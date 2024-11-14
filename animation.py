@@ -300,6 +300,9 @@ def animate(
         inst.num_of_rows, inst.num_of_cols
     )
 
+    fig.set_size_inches(16, 9)
+    fig.subplots_adjust(left=0.05)  # Reduce the left margin
+
     # get max time
     max_time = np.max([len(path_table.table[loc]) for loc in path_table.table])
 

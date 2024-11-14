@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from matplotlib.colors import ListedColormap
 
+from Agent import Agent
 import instance
 from PathTable import PathTable
 
@@ -45,8 +46,8 @@ def visualize(
     ax.imshow(inst.map, cmap=ListedColormap([(1, 1, 1, 0), (0, 0, 0, 1)]))
 
     # get agent collisions
-    no_collisions = []
-    collisions = []
+    no_collisions: list[tuple[int, Agent]] = []
+    collisions: list[tuple[int, Agent]] = []
     for agent_id, agent in inst.agents.items():
         if agent.path_id == -1:
             continue
@@ -85,6 +86,12 @@ def visualize(
         colors = [(1, 1, 1, 0), (r, g, b, 0.3)]
         ax.imshow(agent_grid, cmap=ListedColormap(colors), interpolation="nearest")
 
+        path = agent.paths[agent.path_id]
+        path_x = path[:, 1]
+        path_y = path[:, 0]
+
+        ax.plot(path_x, path_y, color=(r, g, b, 0.3), linewidth=1)
+
         # mark start and end
         y, x = agent.start
         ax.text(
@@ -104,17 +111,23 @@ def visualize(
     # configure plot
     ax.set_title("Agent paths")
 
+    # Positioning the legend outside the plot
+    print(len(legend_patches), len(legend_patches) % 10 + 1)
     ax.legend(
         handles=legend_patches,
-        loc="upper center",  # Position legend at the top center
-        bbox_to_anchor=(0.5, -0.1),  # Move legend below the plot
-        ncol=3,  # Adjust number of columns to fit your needs
-        frameon=False,
+        loc="upper left",
+        bbox_to_anchor=(1, 1),
+        ncol=int(len(legend_patches) / 25) + 1,
+        fontsize="small",
     )
 
-    # # uncomment to move x labels to top
-    # ax.xaxis.set_label_position("top")
-    # ax.xaxis.tick_top()
+    # Ensure the layout accommodates the legend on the right
+    # plt.subplots_adjust(right=1.6)
+    plt.show()
+
+    # move x-axis to the top
+    ax.xaxis.set_label_position("top")
+    ax.xaxis.tick_top()
 
     # Major ticks
     ax.set_xticks(np.arange(inst.num_of_cols))

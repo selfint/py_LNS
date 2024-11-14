@@ -12,8 +12,8 @@ from matplotlib.animation import FuncAnimation
 import instance
 from PathTable import PathTable
 
-agent_alpha: float = 0.5
-obstacle_alpha: float = 0.3
+agent_alpha: float = 0.6
+obstacle_alpha: float = 0.2
 
 
 class FrameObjects(NamedTuple):
@@ -124,6 +124,13 @@ def setup(
         agent_img[agent_id] = ax.imshow(
             agent_grid, cmap=ListedColormap(colors), interpolation="nearest"
         )
+
+        # plot agent path
+        path = agent.paths[agent.path_id]
+        path_x = path[:, 1]
+        path_y = path[:, 0]
+
+        ax.plot(path_x, path_y, color=(r, g, b, 0.3), linewidth=1)
 
         # mark start and end
         y, x = agent.start

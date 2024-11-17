@@ -4,14 +4,14 @@ from Agent import Agent
 
 
 class instance:
-    def __init__(self, map_f_name,agent_fname, instance_name, verbose = True, n_paths = 5, agent_path_temp = 1):
+    def __init__(self, map_f_name,agent_fname, instance_name, verbose = True, n_paths = 3, agent_path_temp = 1):
         self.map_f_name = map_f_name
         self.agent_fname = agent_fname
         self.instance_name = instance_name
         self.verbose = verbose
         self.n_paths = n_paths
         self.agent_path_temp = agent_path_temp
-        np.random.seed(2705)
+        np.random.seed(2706)
 
         self.load_map()
         self.load_agents()

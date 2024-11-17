@@ -51,12 +51,16 @@ class PathTable:
         return count
 
     def num_collisions(self):
+        return self.num_collisions_in_robots()
         count = 0
         for time_list in self.table.values():
             for point_set in time_list:
                 if len(point_set) > 1:
                     count += 1
         return count
+
+    def num_collisions_in_robots(self, num_robots = 90):
+        return self.get_collisions_matrix(num_robots).sum()//2
 
     def get_collisions_matrix(self, num_robots):
         matrix = np.zeros((num_robots+1,num_robots+1))
@@ -76,7 +80,7 @@ class PathTable:
                 if len(self.table[tuple(loc)]) > t:
                     for colliding_agent_id in self.table[tuple(loc)][t]:
                         if colliding_agent_id != agent.id:
-                            print(f'**** agent {agent.id} collides with agent {colliding_agent_id}')
+                            #print(f'**** agent {agent.id} collides with agent {colliding_agent_id}')
                             matrix[path_index][colliding_agent_id] = 1
         return matrix.sum(axis = 1).astype(int).tolist()
 

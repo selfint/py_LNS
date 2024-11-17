@@ -66,8 +66,8 @@ class IterativeRandomLNS:
 
     def run_iteration(self):
         subset = self.destroy_heuristic.generate_subset()#np.random.choice(range(1, self.instance.num_agents+1), self.subset_size, replace=False)
-        subset_path_ids = [int(self.instance.agents[agent_id].path_id) for agent_id in subset]
         print(subset)
+        subset_path_ids = [int(self.instance.agents[agent_id].path_id) for agent_id in subset]
         if self.verbose:
             print(f'\n**** Initial number of collisions: {self.num_collisions} ****')
         low_level_solver = self.low_level_solver(agent_cost_type = 'mean', instance = self.instance,path_table =  self.path_table, agent_subset = subset, verbose=False)

@@ -1,7 +1,7 @@
 import numpy as np
 import instance
 import PathTable
-from graphMethods import get_largest_connected_component, get_degrees_of_vertices_dict, get_degrees_of_all_vertices
+from graphMethods import *
 
 
 class DestroyHeuristic:
@@ -29,10 +29,11 @@ class RandomDestroyHeuristic(DestroyHeuristic):
 
 class ConnectedComponentDestroyHeuristic(DestroyHeuristic):
     def generate_subset(self, complete_random = True):
+        # Generate collisions matrix
         adj_matrix = self.path_table.get_collisions_matrix(self.instance.num_agents)
         largest_cc = get_largest_connected_component(adj_matrix)
         if len(largest_cc) > self.subset_size:
-            return largest_cc[:self.subset_size]
+            return random_walk_until_neighborhood_is_full(adj_matrix, largest_cc, subset_size=self.subset_size)
         if len(largest_cc) < self.subset_size:
             random_dh = RandomDestroyHeuristic(self.instance, self.path_table, self.subset_size)
             return random_dh.generate_subset(initial_subset=largest_cc)
@@ -80,11 +81,12 @@ class RandomWeightedDestroyHeuristic(DestroyHeuristic):
         # Normalize probabilities to sum to 1
         prob_weights = prob_weights/prob_weights.sum()
 
-        random_size = self.subset_size - len(initial_subset)
-        random_subset = np.random.choice(range(1, self.instance.num_agents+1), random_size, replace=False, p=prob_weights)
         # Calculate number of agents left to choose
         random_size = self.subset_size - len(initial_subset)
 
+
         # Choose random agents
+        random_subset = np.random.choice(range(1, self.instance.num_agents+1), random_size, replace=False, p=prob_weights)
+
         subset = initial_subset + random_subset.tolist()
         return subset

@@ -7,7 +7,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 from plotter import *
-from graphMethods import get_largest_connected_component, get_degrees_of_vertices_dict
+from graphMethods import *
 import itertools
 
 
@@ -52,13 +52,13 @@ def n_path_ablation(map_path, agent_path, solver, verbose = True, temp = 1):
     for n_path in n_paths:
         run_scenario(map_path, agent_path, solver,'n_path_ablation.csv', verbose, n_path, temp)
 
-def group_size_ablation(map_path, agent_path, solver, verbose = True, n_paths = 2, temp = 1):
+def group_size_ablation(map_path, agent_path, solver_name, verbose = True, n_paths = 2, temp = 1):
     open('group_size_ablation.csv', "a")
-    group_sizes = range(1, 12)
+    group_sizes = [10,15,20, 25, 30]#range(1, 12)
     collision_counts = []
     x_axis = []
     for size in group_sizes:
-        s = instance.instance(map_path, agent_path, solver)
+        s = instance.instance(map_path, agent_path, solver_name)
         t = PathTable(s.num_of_rows, s.num_of_cols)
         solvers.random_initial_solution(s, t)
         solver = solvers.IterativeRandomLNS(s, t, size)
@@ -95,14 +95,14 @@ def exhaustive_vs_random_exp(map_path, agent_path, solver_name, verbose = True, 
 
 def destroy_method_ablation_exp(map_path, agent_path, solver_name, verbose = True, n_paths = 3, temp = 1):
     #open('test.csv', "a")
-    ds_list = ['random', 'w-random']#range(1, 12)
+    ds_list = ['cc', 'w-random', 'random']#range(1, 12)
     collision_counts = []
     x_axis = []
     for ds in ds_list:
         s = instance.instance(map_path, agent_path, solver_name, verbose, n_paths, temp)
         t = PathTable(s.num_of_rows, s.num_of_cols)
         solvers.random_initial_solution(s, t)
-        solver = solvers.IterativeRandomLNS(s, t, 3, destroy_method_name=ds, num_iterations= 20000, low_level_solver_name=solver_name)
+        solver = solvers.IterativeRandomLNS(s, t, 20, destroy_method_name=ds, num_iterations= 3500, low_level_solver_name=solver_name)
         x_axis = range(solver.num_iterations + 1)
         solver.run()
         collision_counts += [solver.collision_statistics]
@@ -115,7 +115,7 @@ def destroy_method_ablation_exp(map_path, agent_path, solver_name, verbose = Tru
 
 def test_exp(map_path, agent_path, solver_name, verbose = True, n_paths = 3, temp = 1):
     #open('test.csv', "a")
-    group_sizes = [3,4,5]#range(1, 12)
+    group_sizes = [20]#range(1, 12)
     solvers_list = ['pp','rank-pp']#range(1, 12)
     variants = list(itertools.product(group_sizes, solvers_list))
     collision_counts = []
@@ -123,10 +123,13 @@ def test_exp(map_path, agent_path, solver_name, verbose = True, n_paths = 3, tem
     for size, solver_name in variants:
         s = instance.instance(map_path, agent_path, solver_name, n_paths = n_paths)
         t = PathTable(s.num_of_rows, s.num_of_cols)
-        solvers.generate_random_random_solution_iterative(s, t)
+        solvers.random_initial_solution(s, t)
+        adj_matrix = t.get_collisions_matrix(s.num_agents)
+        largest_cc = get_largest_connected_component(adj_matrix)
+        random_walk_until_neighborhood_is_full(adj_matrix, largest_cc, subset_size=5)
         #print(t.get_collisions_matrix(s.num_agents).sum(axis=1))
         #t.get_agent_collisions_for_paths(s.agents[2], s.num_agents)
-        solver = solvers.IterativeRandomLNS(s, t, size, destroy_method_name='w-random',low_level_solver_name = solver_name, num_iterations= 1000)
+        solver = solvers.IterativeRandomLNS(s, t, size, destroy_method_name='cc',low_level_solver_name = solver_name, num_iterations= 3000)
         x_axis = range(solver.num_iterations + 1)
         solver.run()
         collision_counts += [solver.collision_statistics]

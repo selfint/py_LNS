@@ -58,7 +58,7 @@ def create_random_point_toward_end_with_obstacles(instance,cur_point,end, temp):
 
 
 def is_point_valid(point: np.array, num_of_rows, num_of_cols):
-    return 0 <= point[0] <= num_of_rows and 0 <= point[1] <= num_of_cols
+    return 0 <= point[0] < num_of_rows and 0 <= point[1] < num_of_cols
 
 
 def create_random_step_path(instance, start, end, num_of_rows, num_of_cols, temp = 1):

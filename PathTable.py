@@ -2,6 +2,18 @@ import itertools
 import numpy as np
 import Agent
 class PathTable:
+    """
+    Represents paths in the grid.
+
+    The table is a dictionary with keys as tuples (i,j) representing the
+    location in the grid.
+
+    Each value is a list of sets. The list is indexed by time t, and the set
+    contains the agent ids that are at location (i,j) at time t.
+    """
+
+    table: dict[tuple[int, int], list[set[int]]]
+
     def __init__(self, num_of_rows, num_of_cols):
         self.table = dict()
         for i in range(0, num_of_rows+1):

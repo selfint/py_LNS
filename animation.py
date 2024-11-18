@@ -17,9 +17,8 @@ obstacle_alpha: float = 0.2
 
 
 class FrameObjects(NamedTuple):
-    bg: mpimg.AxesImage
     agent_img: dict[int, mpimg.AxesImage]
-    collision_texts: list[plt.Text]
+    collision_texts: list[list[plt.Text]]
     arrows: dict[int, plt.Arrow]
     agent_colors: dict[int, tuple]
 
@@ -60,9 +59,8 @@ def setup(
             for agent_id in path_table.table[(row, col)][start_time]:
                 grid_2d[agent_id - 1][row][col] = 1
 
-    bg = ax.imshow(
-        inst.map, cmap=ListedColormap([(1, 1, 1, 0), (0, 0, 0, obstacle_alpha)])
-    )
+    # plot obstacles
+    ax.imshow(inst.map, cmap=ListedColormap([(1, 1, 1, 0), (0, 0, 0, obstacle_alpha)]))
 
     # get agent collisions
     no_collisions = []
@@ -99,7 +97,7 @@ def setup(
     # plot agent paths
     legend_patches = []
     did_plot = 0
-    agent_img = {}
+    agent_img: dict[int, mpimg.AxesImage] = {}
     arrows = {}
     agent_colors = {}
     for agent_id, agent in collisions:
@@ -175,7 +173,7 @@ def setup(
     ax.set_xticks(np.arange(-0.5, inst.num_of_cols, 1), minor=True)
     ax.set_yticks(np.arange(-0.5, inst.num_of_rows, 1), minor=True)
 
-    # Gridlines based on minor ticks
+    # Grid lines based on minor ticks
     ax.grid(which="minor", color="gray", linestyle="-", linewidth=0.1)
 
     # Remove minor ticks
@@ -186,7 +184,6 @@ def setup(
     ax.set_yticks([])
 
     return FrameObjects(
-        bg,
         agent_img,
         collision_texts,
         arrows,
@@ -218,20 +215,18 @@ def update_frame(
             for agent_id in path_table.table[(row, col)][timestamp]:
                 grid_2d[agent_id - 1][row][col] = 1
 
-    frame_objects.bg.set_data(inst.map)
-
     # update agent paths
     for agent_id in frame_objects.agent_img:
         agent_grid = grid_2d[agent_id - 1]
         frame_objects.agent_img[agent_id].set_data(agent_grid)
 
     # update collision texts
-    for texts in frame_objects.collision_texts[: timestamp + 1]:
+    for t, texts in enumerate(frame_objects.collision_texts):
         for txt in texts:
-            txt.set_text("X")
-    for texts in frame_objects.collision_texts[timestamp + 1 :]:
-        for txt in texts:
-            txt.set_text(" ")
+            if t <= timestamp:
+                txt.set_text("X")
+            else:
+                txt.set_text(" ")
 
     # update arrows
     for agent_id in frame_objects.arrows:
@@ -264,7 +259,6 @@ def update_frame(
         txt for sublist in frame_objects.collision_texts for txt in sublist
     ]
     return [
-        frame_objects.bg,
         *frame_objects.agent_img.values(),
         *flat_collisions_texts,
         *[arrow for arrow in frame_objects.arrows.values() if arrow is not None],

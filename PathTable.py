@@ -13,21 +13,22 @@ class PathTable:
     contains the agent ids that are at location (i,j) at time t.
     """
 
-    table: dict[tuple[int, int, int], list[set[int]]]
+    table: defaultdict[tuple[int, int, int], set[int]]
 
     def __init__(self, num_of_rows, num_of_cols):
-        self.table = defaultdict(lambda: [])
+        self.table = defaultdict(set)
 
     def insert_path(self, agent_id, path):
         for (x, y), t in zip(path, range(len(path))):
-            self.insert_point(agent_id, x,y ,t)
+            self.insert_point(agent_id, x, y, t)
 
-    def insert_point(self,agent_id, x, y, t):
-        self.table[x, y, t].append(agent_id)
+    def insert_point(self, agent_id, x, y, t):
+        print(f"Inserting agent {agent_id} at ({x},{y}) at time {t}")
+        self.table[x, y, t].add(agent_id)
 
     def remove_path(self, agent_id, path):
         for (x, y), t in zip(path, range(len(path))):
-            del self.table[x, y, t][agent_id]
+            self.table[x, y, t].remove(agent_id)
 
     def is_path_available(self, path):
         for (x, y), t in zip(path, range(len(path))):
@@ -35,13 +36,13 @@ class PathTable:
                 return False
 
     def count_collisions_points_along_path(self, path):
-        return len([self.table[x, y, t] for x, y, t in zip(path, range(len(path)))])
+        return sum(len(self.table[x, y, t]) > 0 for (x, y), t in zip(path, range(len(path))))
 
     def count_collisions_points_along_existing_path(self, path):
-        return len([self.table[x, y, t] for x, y, t in zip(path, range(len(path))) if len(self.table[x, y, t]) > 1])
+        return sum(len(self.table[x, y, t]) > 1 for (x, y), t in zip(path, range(len(path))))
 
-    def num_collisions(self):
-        return self.num_collisions_in_robots()
+    def num_collisions(self, num_robots = 90):
+        return self.num_collisions_in_robots(num_robots)
         count = 0
         for time_list in self.table.values():
             for point_set in time_list:
@@ -54,7 +55,7 @@ class PathTable:
 
     def get_collisions_matrix(self, num_robots):
         matrix = np.zeros((num_robots+1,num_robots+1))
-        for ((_x, _y), t), agent_ids in self.table.items():
+        for _, agent_ids in self.table.items():
             if len(agent_ids) > 1:
                 for i,j in itertools.combinations(agent_ids, 2):
                     matrix[i, j] = 1
@@ -69,13 +70,6 @@ class PathTable:
                 if self.table[x, y, t]:
                     for colliding_agent_id in self.table[x, y, t]:
                         if colliding_agent_id != agent.id:
-                            #print(f'**** agent {agent.id} collides with agent {colliding_agent_id}')
+                            # print(f'**** agent {agent.id} collides with agent {colliding_agent_id}')
                             matrix[path_index][colliding_agent_id] = 1
         return matrix.sum(axis = 1).astype(int).tolist()
-
-
-
-
-
-
-

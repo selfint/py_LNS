@@ -17,8 +17,9 @@ obstacle_alpha: float = 0.2
 
 
 class FrameObjects(NamedTuple):
+    bg: mpimg.AxesImage
     agent_img: dict[int, mpimg.AxesImage]
-    collision_texts: list[list[plt.Text]]
+    collision_texts: list[plt.Text]
     arrows: dict[int, plt.Arrow]
     agent_colors: dict[int, tuple]
 
@@ -50,17 +51,18 @@ def setup(
         inst.num_of_rows, inst.num_of_cols
     )
 
-    max_timestamp = np.max([len(path_table.table[loc]) for loc in path_table.table])
+    max_timestamp = np.max([t for _x, _y, t in path_table.table]) + 1
 
     # fill grid at start_time
     grid_2d = np.zeros((inst.num_agents, inst.num_of_rows, inst.num_of_cols))
-    for row, col in path_table.table:
-        if len(path_table.table[(row, col)]) > start_time:
-            for agent_id in path_table.table[(row, col)][start_time]:
-                grid_2d[agent_id - 1][row][col] = 1
+    for x, y, t in list(path_table.table):
+        if t > start_time:
+            for agent_id in path_table.table[x, y, start_time]:
+                grid_2d[agent_id - 1][x][y] = 1
 
-    # plot obstacles
-    ax.imshow(inst.map, cmap=ListedColormap([(1, 1, 1, 0), (0, 0, 0, obstacle_alpha)]))
+    bg = ax.imshow(
+        inst.map, cmap=ListedColormap([(1, 1, 1, 0), (0, 0, 0, obstacle_alpha)])
+    )
 
     # get agent collisions
     no_collisions = []
@@ -77,7 +79,7 @@ def setup(
     relevant_ids = set(agent_id for agent_id, _ in collisions[:max_paths])
     for agent_id, agent in collisions[:max_paths]:
         for timestamp, (row, col) in enumerate(agent.paths[agent.path_id]):
-            others = set(path_table.table[(row, col)][timestamp])
+            others = set(path_table.table[row, col, timestamp])
 
             # check if there are other agents in the same cell
             if len(others & relevant_ids) > 1:
@@ -97,7 +99,7 @@ def setup(
     # plot agent paths
     legend_patches = []
     did_plot = 0
-    agent_img: dict[int, mpimg.AxesImage] = {}
+    agent_img = {}
     arrows = {}
     agent_colors = {}
     for agent_id, agent in collisions:
@@ -173,7 +175,7 @@ def setup(
     ax.set_xticks(np.arange(-0.5, inst.num_of_cols, 1), minor=True)
     ax.set_yticks(np.arange(-0.5, inst.num_of_rows, 1), minor=True)
 
-    # Grid lines based on minor ticks
+    # Gridlines based on minor ticks
     ax.grid(which="minor", color="gray", linestyle="-", linewidth=0.1)
 
     # Remove minor ticks
@@ -184,6 +186,7 @@ def setup(
     ax.set_yticks([])
 
     return FrameObjects(
+        bg,
         agent_img,
         collision_texts,
         arrows,
@@ -210,10 +213,12 @@ def update_frame(
 
     # fill grid, at specific timestamp
     grid_2d = np.zeros((inst.num_agents, inst.num_of_rows, inst.num_of_cols))
-    for row, col in path_table.table:
-        if len(path_table.table[(row, col)]) > timestamp:
-            for agent_id in path_table.table[(row, col)][timestamp]:
-                grid_2d[agent_id - 1][row][col] = 1
+    for x, y, t in path_table.table:
+        if t > timestamp:
+            for agent_id in path_table.table[x, y, timestamp]:
+                grid_2d[agent_id - 1][x][y] = 1
+
+    frame_objects.bg.set_data(inst.map)
 
     # update agent paths
     for agent_id in frame_objects.agent_img:
@@ -221,12 +226,12 @@ def update_frame(
         frame_objects.agent_img[agent_id].set_data(agent_grid)
 
     # update collision texts
-    for t, texts in enumerate(frame_objects.collision_texts):
+    for texts in frame_objects.collision_texts[: timestamp + 1]:
         for txt in texts:
-            if t <= timestamp:
-                txt.set_text("X")
-            else:
-                txt.set_text(" ")
+            txt.set_text("X")
+    for texts in frame_objects.collision_texts[timestamp + 1 :]:
+        for txt in texts:
+            txt.set_text(" ")
 
     # update arrows
     for agent_id in frame_objects.arrows:
@@ -259,6 +264,7 @@ def update_frame(
         txt for sublist in frame_objects.collision_texts for txt in sublist
     ]
     return [
+        frame_objects.bg,
         *frame_objects.agent_img.values(),
         *flat_collisions_texts,
         *[arrow for arrow in frame_objects.arrows.values() if arrow is not None],
@@ -298,7 +304,7 @@ def animate(
     fig.subplots_adjust(left=0.05)  # Reduce the left margin
 
     # get max time
-    max_time = np.max([len(path_table.table[loc]) for loc in path_table.table])
+    max_time = np.max([t for x, y, t in path_table.table]) + 1
 
     frame_objects = setup(inst, path_table, ax, 0, max_paths, verbose)
 

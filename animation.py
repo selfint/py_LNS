@@ -17,7 +17,6 @@ obstacle_alpha: float = 0.2
 
 
 class FrameObjects(NamedTuple):
-    bg: mpimg.AxesImage
     agent_img: dict[int, mpimg.AxesImage]
     collision_texts: list[plt.Text]
     arrows: dict[int, plt.Arrow]
@@ -60,7 +59,7 @@ def setup(
             for agent_id in agent_ids:
                 grid_2d[agent_id - 1][x][y] = 1
 
-    bg = ax.imshow(
+    ax.imshow(
         inst.map, cmap=ListedColormap([(1, 1, 1, 0), (0, 0, 0, obstacle_alpha)])
     )
 
@@ -186,7 +185,6 @@ def setup(
     ax.set_yticks([])
 
     return FrameObjects(
-        bg,
         agent_img,
         collision_texts,
         arrows,
@@ -217,8 +215,6 @@ def update_frame(
         if t == timestamp:
             for agent_id in agent_ids:
                 grid_2d[agent_id - 1][x][y] = 1
-
-    frame_objects.bg.set_data(inst.map)
 
     # update agent paths
     for agent_id in frame_objects.agent_img:
@@ -264,7 +260,6 @@ def update_frame(
         txt for sublist in frame_objects.collision_texts for txt in sublist
     ]
     return [
-        frame_objects.bg,
         *frame_objects.agent_img.values(),
         *flat_collisions_texts,
         *[arrow for arrow in frame_objects.arrows.values() if arrow is not None],

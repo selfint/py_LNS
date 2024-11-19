@@ -55,9 +55,9 @@ def setup(
 
     # fill grid at start_time
     grid_2d = np.zeros((inst.num_agents, inst.num_of_rows, inst.num_of_cols))
-    for x, y, t in list(path_table.table):
-        if t > start_time:
-            for agent_id in path_table.table[x, y, start_time]:
+    for (x, y, t), agent_ids in path_table.table.items():
+        if t == start_time:
+            for agent_id in agent_ids:
                 grid_2d[agent_id - 1][x][y] = 1
 
     bg = ax.imshow(
@@ -213,9 +213,9 @@ def update_frame(
 
     # fill grid, at specific timestamp
     grid_2d = np.zeros((inst.num_agents, inst.num_of_rows, inst.num_of_cols))
-    for x, y, t in path_table.table:
-        if t > timestamp:
-            for agent_id in path_table.table[x, y, timestamp]:
+    for (x, y, t), agent_ids in path_table.table.items():
+        if t == timestamp:
+            for agent_id in agent_ids:
                 grid_2d[agent_id - 1][x][y] = 1
 
     frame_objects.bg.set_data(inst.map)

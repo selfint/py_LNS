@@ -1,6 +1,7 @@
 import aux
 import numpy as np
 from Agent import Agent
+from graphMethods import create_graph_from_map
 
 
 class instance:
@@ -24,10 +25,14 @@ class instance:
         self.map_size = self.num_of_rows * self.num_of_cols
         file_string = [c for c in file_string if c != '\n']
         self.map = np.array(list(map(lambda c: int(c != '.'), file_string))).reshape(self.num_of_rows, self.num_of_cols)
+        self.create_map_graph()
         if self.verbose:
             print(f'\n**** Successfully loaded map from: {self.map_f_name} ****')
             print(f'     number of rows: {self.num_of_rows}')
             print(f'     number of columns: {self.num_of_cols}\n')
+
+    def create_map_graph(self):
+        self.map_graph = create_graph_from_map(self.map, self.num_of_rows, self.num_of_cols, verbose = self.verbose)
     def print_map(self):
         for line in self.map:
             print(''.join(aux.bin_to_char(num) for num in line))

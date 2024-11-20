@@ -6,9 +6,6 @@ import networkx as nx
 import matplotlib.pyplot as plt
 
 
-
-
-
 def get_degrees_of_vertices_dict(adj_matrix, vertex_list):
     return {v: adj_matrix[v].sum() for v in vertex_list}
 
@@ -67,3 +64,16 @@ def get_random_neighbor(graph, node):
     return int(np.random.choice(neighbors, 1))
 
 
+def create_graph_from_map(map, num_of_rows, num_of_cols, verbose = False):
+    graph = nx.grid_2d_graph(num_of_rows, num_of_cols)
+    nodes = [tuple(loc) for loc in np.argwhere(map>0).tolist()]
+    graph.remove_nodes_from(nodes)
+
+    if verbose:
+        plt.figure(figsize=(6, 6))
+        pos = {(x, y): (y, -x) for x, y in graph.nodes()}
+        nx.draw(graph, pos=pos,
+                node_color='lightgreen',
+                node_size=60)
+        plt.show()
+    return graph

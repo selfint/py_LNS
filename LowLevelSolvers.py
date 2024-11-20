@@ -48,7 +48,7 @@ class PPNeighborhoodRepair(NeighborhoodRepair):
 
     def run(self):
         self.destroy_neighborhood()
-        print(f'     num_cols:{self.path_table.num_collisions()}')
+        print(f'     num_cols:{self.path_table.num_collisions(self.instance.num_agents)}')
 
         for agent_id in self.agent_subset:#np.random.permutation(self.agent_subset):
             self.reroute_agent(agent_id)
@@ -76,7 +76,7 @@ class ExhaustiveNeighborhoodRepair(NeighborhoodRepair):
         # Iterate over all path selections
         for path_selection in path_combinations:
             self.reroute_agents(path_selection)
-            num_cols = self.path_table.num_collisions()
+            num_cols = self.path_table.num_collisions(self.instance.num_agents)
             if num_cols < best_num_cols:
                 best_num_cols = num_cols
                 best_path_selection = path_selection

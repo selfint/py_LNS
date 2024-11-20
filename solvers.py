@@ -48,7 +48,7 @@ class IterativeRandomLNS:
         self.subset_size = subset_size
         self.verbose = self.instance.verbose
         self.num_iterations = num_iterations
-        self.num_collisions = self.path_table.num_collisions()
+        self.num_collisions = self.path_table.num_collisions(self.instance.num_agents)
         self.collision_statistics = [self.num_collisions]
         destroy_methods = {'random': DestroyMethods.RandomDestroyHeuristic,
                            'w-random': DestroyMethods.RandomWeightedDestroyHeuristic,
@@ -72,7 +72,7 @@ class IterativeRandomLNS:
             print(f'\n**** Initial number of collisions: {self.num_collisions} ****')
         low_level_solver = self.low_level_solver(agent_cost_type = 'mean', instance = self.instance,path_table =  self.path_table, agent_subset = subset, verbose=False)
         low_level_solver.run()
-        new_num_collisions = self.path_table.num_collisions()
+        new_num_collisions = self.path_table.num_collisions(self.instance.num_agents)
         if new_num_collisions < self.num_collisions:
             self.num_collisions = new_num_collisions
             if self.verbose:

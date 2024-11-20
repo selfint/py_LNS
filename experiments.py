@@ -9,7 +9,7 @@ import numpy as np
 from plotter import *
 from graphMethods import *
 import itertools
-
+from visualization import visualize
 
 def run_scenario(map_path, agent_path, solver, log_file = 'experiments.csv', verbose = True, n_paths = 2, temp = 1):
     inst = instance.instance(map_path, agent_path, solver, verbose, n_paths, agent_path_temp = temp)
@@ -101,8 +101,9 @@ def destroy_method_ablation_exp(map_path, agent_path, solver_name, verbose = Tru
     for ds in ds_list:
         s = instance.instance(map_path, agent_path, solver_name, verbose, n_paths, temp)
         t = PathTable(s.num_of_rows, s.num_of_cols)
-        solvers.random_initial_solution(s, t)
-        solver = solvers.IterativeRandomLNS(s, t, 20, destroy_method_name=ds, num_iterations= 3500, low_level_solver_name=solver_name)
+        solvers.generate_random_random_solution_iterative(s, t)
+        t.calculate_makespan()
+        solver = solvers.IterativeRandomLNS(s, t, 15, destroy_method_name=ds, num_iterations= 5000, low_level_solver_name=solver_name)
         x_axis = range(solver.num_iterations + 1)
         solver.run()
         collision_counts += [solver.collision_statistics]
@@ -133,6 +134,7 @@ def test_exp(map_path, agent_path, solver_name, verbose = True, n_paths = 3, tem
         x_axis = range(solver.num_iterations + 1)
         solver.run()
         collision_counts += [solver.collision_statistics]
+        visualize(s, t, )
     label = 'num_of_cols in random PP LNS (varying group sizes and solvers, 1000 iteration)'
     x_axis_label = 'iterations'
     y_axis_label = 'collision counts'

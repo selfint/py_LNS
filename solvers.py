@@ -9,7 +9,8 @@ def random_initial_solution(instance: instance.instance, path_table: PathTable.P
     random_path_selection = np.random.randint(instance.n_paths, size=instance.num_agents)
     for agent_id, path_idx in zip(instance.agents.keys(), random_path_selection):
         path_table.insert_path(agent_id, instance.agents[agent_id].paths[path_idx])
-        instance.agents[agent_id].path_id = path_idx
+        instance.agents[agent_id].path_id = int(path_idx)
+    path_table.calculate_makespan()
 
 def generate_random_random_solution_iterative(instance: instance.instance, path_table: PathTable.PathTable, iterations = 200):
     random_initial_solution(instance, path_table) # Choose random paths as initial solution

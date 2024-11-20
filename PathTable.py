@@ -17,13 +17,14 @@ class PathTable:
 
     def __init__(self, num_of_rows, num_of_cols):
         self.table = defaultdict(set)
+        self.makespan = -1
 
     def insert_path(self, agent_id, path):
-        for (x, y), t in zip(path, range(len(path))):
+        for (x, y), t in zip(path.tolist(), range(len(path))):
             self.insert_point(agent_id, x, y, t)
 
     def insert_point(self, agent_id, x, y, t):
-        print(f"Inserting agent {agent_id} at ({x},{y}) at time {t}")
+        #print(f"Inserting agent {agent_id} at ({x},{y}) at time {t}")
         self.table[x, y, t].add(agent_id)
 
     def remove_path(self, agent_id, path):
@@ -73,3 +74,10 @@ class PathTable:
                             # print(f'**** agent {agent.id} collides with agent {colliding_agent_id}')
                             matrix[path_index][colliding_agent_id] = 1
         return matrix.sum(axis = 1).astype(int).tolist()
+
+    def calculate_makespan(self):
+        makespan = -1
+        for (_,_,t), _ in self.table.items():
+            makespan = max(t, makespan)
+        self.makespan = makespan
+

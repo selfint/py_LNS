@@ -51,7 +51,7 @@ def random_walk_until_neighborhood_is_full(matrix, connected_component, subset_s
 
     current_agent = agent_id
     while len(subset) < subset_size:
-        next_agent = get_random_neighbor(graph, current_agent)
+        next_agent = int(get_random_neighbor(graph, current_agent))
         subset.add(next_agent)
         current_agent = next_agent
 
@@ -60,8 +60,11 @@ def random_walk_until_neighborhood_is_full(matrix, connected_component, subset_s
 
 
 def get_random_neighbor(graph, node):
-    neighbors = np.array(list(nx.all_neighbors(graph, node)))
-    return int(np.random.choice(neighbors, 1))
+    if node == (23,25):
+        pass
+    neighbors = list(nx.all_neighbors(graph, node))
+    index = int(np.random.randint(len(neighbors), size=1))
+    return neighbors[index]
 
 
 def create_graph_from_map(map, num_of_rows, num_of_cols, verbose = False):

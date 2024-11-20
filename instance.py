@@ -12,7 +12,7 @@ class instance:
         self.verbose = verbose
         self.n_paths = n_paths
         self.agent_path_temp = agent_path_temp
-        np.random.seed(2706)
+        np.random.seed(2716)
 
         self.load_map()
         self.load_agents()
@@ -64,12 +64,49 @@ class instance:
         lines = [[int(num) for num in line] for line in lines]
         self.start_locations = [line[:2] for line in lines]
         self.goal_locations = [line[2:] for line in lines]
+        self.verify_and_repair_agents()
         self.num_agents = len(self.start_locations)
         if self.verbose:
             print(f'**** Successfully loaded {self.num_agents} agents! ****\n')
         self.agents = {i: Agent(self, i, s, t, self.n_paths) for i, s, t in (zip(range(1, self.num_agents+1), self.start_locations, self.goal_locations))}
         for agent in self.agents.values():
             agent.generate_paths(self.num_of_rows, self.num_of_cols, self.agent_path_temp)
+
+    def verify_and_repair_agents(self):
+        new_starts = []
+        for start in self.start_locations:
+            if tuple(start) not in self.map_graph.nodes:
+                start_x = start[0]
+                start_y = start[1]
+                new_locs = [(start_x-1,start_y),
+                            (start_x+1,start_y),
+                            (start_x,start_y-1),
+                            (start_x,start_y+1)]
+                for new_loc in new_locs:
+                    if new_loc in self.map_graph.nodes:
+                        start = list(new_loc)
+                        break
+            new_starts += [start]
+        self.start_locations = new_starts
+
+        new_goals = []
+        for goal in self.goal_locations:
+            if tuple(goal) not in self.map_graph.nodes:
+                goal_x = goal[0]
+                goal_y = goal[1]
+                new_locs = [(goal_x - 1, goal_y),
+                            (goal_x + 1, goal_y),
+                            (goal_x, goal_y - 1),
+                            (goal_x, goal_y + 1)]
+                for new_loc in new_locs:
+                    if new_loc in self.map_graph.nodes:
+                        goal = list(new_loc)
+                        break
+            new_goals += [goal]
+        self.goal_locations = new_goals
+
+
+
     def is_in_map(self, loc):
         return 0 <= loc[0] < self.num_of_rows and 0 <= loc[1] < self.num_of_cols
     def is_valid_move(self, cur_loc, next_loc):

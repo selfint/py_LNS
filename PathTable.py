@@ -24,7 +24,6 @@ class PathTable:
             self.insert_point(agent_id, x, y, t)
 
     def insert_point(self, agent_id, x, y, t):
-        #print(f"Inserting agent {agent_id} at ({x},{y}) at time {t}")
         self.table[x, y, t].add(agent_id)
 
     def remove_path(self, agent_id, path):

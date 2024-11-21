@@ -38,10 +38,9 @@ def visualize(
 
     # fill grid, ignore time dimension
     grid_2d = np.zeros((inst.num_agents, inst.num_of_rows, inst.num_of_cols))
-    for row, col in path_table.table:
-        for timestamp in path_table.table[(row, col)]:
-            for agent_id in timestamp:
-                grid_2d[agent_id - 1][row][col] = 1
+    for row, col, timestamp in path_table.table:
+        for agent_id in path_table.table[(row, col, timestamp)]:
+            grid_2d[agent_id - 1][row][col] = 1
 
     ax.imshow(inst.map, cmap=ListedColormap([(1, 1, 1, 0), (0, 0, 0, 1)]))
 
@@ -63,7 +62,7 @@ def visualize(
     relevant_ids = set(agent_id for agent_id, _ in collisions[:max_paths])
     for agent_id, agent in collisions[:max_paths]:
         for timestamp, (row, col) in enumerate(agent.paths[agent.path_id]):
-            others = set(path_table.table[(row, col)][timestamp])
+            others = set(path_table.table[(row, col, timestamp)])
 
             # check if there are other agents in the same cell
             if len(others & relevant_ids) > 1:

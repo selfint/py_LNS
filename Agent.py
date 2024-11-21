@@ -13,3 +13,4 @@ class Agent:
     def generate_paths(self, num_rows, num_cols, temp):
         self.paths = [create_random_step_path(self.instance, self.start, self.end, num_rows, num_cols, temp) for i in range(self.n_paths)]
 
+

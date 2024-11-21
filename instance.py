@@ -12,7 +12,7 @@ class instance:
         self.verbose = verbose
         self.n_paths = n_paths
         self.agent_path_temp = agent_path_temp
-        np.random.seed(2716)
+        np.random.seed(2717)
 
         self.load_map()
         self.load_agents()

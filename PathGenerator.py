@@ -6,7 +6,7 @@ import aux
 def softmax(x):
     return np.exp(x) / sum(np.exp(x))
 
-def create_random_point_toward_end(cur_point,end, temp):
+def create_random_point_toward_end(instance, cur_point,end, temp):
     end_x = end[0]
     end_y = end[1]
     cur_x = cur_point[0]
@@ -26,7 +26,30 @@ def create_random_point_toward_end(cur_point,end, temp):
         choice = 2 * choice - 1  # -1 means left, 1 means right
         return np.array([cur_x, cur_y + choice])
 
-def create_random_point_toward_end_with_obstacles(instance,cur_point,end, temp):
+def create_random_point_toward_end_with_obstacles(instance, cur_point,end, temp):
+    map_graph = instance.map_graph
+
+    # Get next available points from collision map
+    next_points = np.array(list(list(n) for n in map_graph.neighbors(tuple(cur_point))))
+
+    # Calculate deltas w.r.t origin point
+    deltas = next_points - np.array(cur_point)
+
+    # Calculate deltas from origin point to end point
+    end_deltas = np.array(end)-np.array(cur_point)
+
+    # Score points according to direction w.r.t end deltas
+    point_scores = (deltas * end_deltas).sum(axis = 1)
+
+    # Turn scores into probabilities
+    probs = softmax(point_scores / temp)  # coord 0 means left, 1 means right
+
+    choice_idx = int(np.random.choice(len(next_points), 1, p=probs))
+
+    return np.array(next_points[choice_idx])
+
+
+def create_random_point_toward_end_with_obstacles_old(instance,cur_point,end, temp):
     end_x = end[0]
     end_y = end[1]
     cur_x = cur_point[0]
@@ -66,7 +89,7 @@ def create_random_step_path(instance, start, end, num_of_rows, num_of_cols, temp
 
     cur_point = path[0]
     while not np.array_equal(cur_point,end) and aux.manhattan_dist(cur_point, end) > 1:
-        new_point = create_random_point_toward_end(cur_point,end, temp)
+        new_point = create_random_point_toward_end_with_obstacles(instance, cur_point,end, temp)
         if is_point_valid(new_point, num_of_rows, num_of_cols):# and instance.map[new_point[0], new_point[1]] != 1:
             cur_point = new_point
             path += [cur_point]

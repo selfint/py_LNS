@@ -154,8 +154,8 @@ class OptimisticIterationResult(TypedDict):
 
 
 def optimistic_iteration_exp(
-    map_path, agent_path, n_paths=3, temp=1, verbose=True, n_iterations=1000
-) -> list[OptimisticIterationResult]:
+    map_path, agent_path, n_paths=3, temp=1, verbose=True, n_iterations=1000, max_agents = None
+) -> list[instance.instance, PathTable, OptimisticIterationResult]:
     inst = instance.instance(
         map_path,
         agent_path,
@@ -164,6 +164,11 @@ def optimistic_iteration_exp(
         agent_path_temp=temp,
         verbose=verbose
     )
+
+    if max_agents is not None:
+        new_agents = dict([(k, v) for k, v in inst.agents.items()][:max_agents])
+        inst.agents = new_agents
+        inst.num_agents = len(new_agents)
 
     table = PathTable(inst.num_of_rows, inst.num_of_cols)
 
@@ -193,6 +198,10 @@ def optimistic_iteration_exp(
             if initial_collisions == 0:
                 continue
 
+            if verbose:
+                print(f'\n**** Agent {agent_id} ****')
+                print(f'\nInitial number of collisions: {initial_collisions}')
+
             total_colliding_agents += 1
 
             # iterate over all other path selections
@@ -208,8 +217,8 @@ def optimistic_iteration_exp(
                     inst.num_agents
                 )
                 new_collisions = iteration_collision_matrix[agent_id].sum()
-                if new_collisions < initial_collisions:
-                    best_collisions = initial_collisions
+                if new_collisions < best_collisions:
+                    best_collisions = new_collisions
                     if verbose:
                         print(f'\n      Found new path selection: {path_id} ****')
                         print(f'\n      New number of collisions: {best_collisions} ****')
@@ -241,4 +250,4 @@ def optimistic_iteration_exp(
         # improve with solver
         solver.run_iteration()
 
-    return results
+    return inst, table, results

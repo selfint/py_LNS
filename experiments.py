@@ -101,7 +101,10 @@ def destroy_method_ablation_exp(map_path, agent_path, solver_name, verbose = Tru
     for ds in ds_list:
         s = instance.instance(map_path, agent_path, solver_name, verbose, n_paths, temp)
         t = PathTable(s.num_of_rows, s.num_of_cols)
-        solvers.generate_random_random_solution_iterative(s, t)
+        solvers.random_initial_solution(s, t)
+        fig, ax = plt.subplots()
+        visualize(s, t, ax, n_paths)
+        assert False
         t.calculate_makespan()
         solver = solvers.IterativeRandomLNS(s, t, 15, destroy_method_name=ds, num_iterations= 5000, low_level_solver_name=solver_name)
         x_axis = range(solver.num_iterations + 1)

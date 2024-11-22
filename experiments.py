@@ -174,9 +174,9 @@ def optimistic_iteration_exp(
 
     group_size = 20
 
-    solver = solvers.IterativeRandomLNS(inst, table, group_size, num_iterations=n_iterations)
-
     solvers.random_initial_solution(inst, table)
+
+    solver = solvers.IterativeRandomLNS(inst, table, group_size, num_iterations=n_iterations)
 
     results: list[OptimisticIterationResult] = []
 

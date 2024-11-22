@@ -12,6 +12,7 @@ from plotter import *
 from graphMethods import *
 import itertools
 from visualization import visualize
+import tqdm
 
 def run_scenario(map_path, agent_path, solver, log_file = 'experiments.csv', verbose = True, n_paths = 2, temp = 1):
     inst = instance.instance(map_path, agent_path, solver, verbose, n_paths, agent_path_temp = temp)
@@ -154,7 +155,14 @@ class OptimisticIterationResult(TypedDict):
 
 
 def optimistic_iteration_exp(
-    map_path, agent_path, n_paths=3, temp=1, verbose=True, n_iterations=1000, max_agents = None
+    map_path,
+    agent_path,
+    n_paths=3,
+    temp=1,
+    verbose=True,
+    n_iterations=1000,
+    max_agents=None,
+    on_result_callback=None,
 ) -> list[instance.instance, PathTable, OptimisticIterationResult]:
     inst = instance.instance(
         map_path,
@@ -180,7 +188,8 @@ def optimistic_iteration_exp(
 
     results: list[OptimisticIterationResult] = []
 
-    for iteration in range(n_iterations):
+    p_bar = tqdm.tqdm(range(n_iterations))
+    for iteration in p_bar:
         # get improvement from changing a single agent
         total_colliding_agents = 0
         total_improved_agents = 0
@@ -234,20 +243,25 @@ def optimistic_iteration_exp(
             table.insert_path(agent_id, agent.paths[initial_path])
 
         # print results
-        print(f'\n**** Iteration {iteration} ****')
-        print(f'\nTotal colliding agents: {total_colliding_agents}')
-        print(f'\nTotal improved agents: {total_improved_agents}')
-        print(f'\nTotal improvement: {total_improvement}')
+        if verbose:
+            print(f'\n**** Iteration {iteration} ****')
+            print(f'\nTotal colliding agents: {total_colliding_agents}')
+            print(f'\nTotal improved agents: {total_improved_agents}')
+            print(f'\nTotal improvement: {total_improvement}')
 
         result: OptimisticIterationResult = {
-            "total_colliding_agents": total_colliding_agents,
-            "total_improved_agents": total_improved_agents,
-            "total_improvement": total_improvement,
+            "total_colliding_agents": int(total_colliding_agents),
+            "total_improved_agents": int(total_improved_agents),
+            "total_improvement": int(total_improvement),
         }
 
         results.append(result)
 
+        on_result_callback(result)
+
         # improve with solver
         solver.run_iteration()
+
+        p_bar.set_description(f'Collisions: {solver.num_collisions}')
 
     return inst, table, results

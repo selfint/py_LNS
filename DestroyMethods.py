@@ -35,9 +35,62 @@ class ConnectedComponentDestroyHeuristic(DestroyHeuristic):
         if len(largest_cc) > self.subset_size:
             return random_walk_until_neighborhood_is_full(adj_matrix, largest_cc, subset_size=self.subset_size)
         if len(largest_cc) < self.subset_size:
-            random_dh = RandomDestroyHeuristic(self.instance, self.path_table, self.subset_size)
-            return random_dh.generate_subset(initial_subset=largest_cc)
+            #random_dh = RandomDestroyHeuristic(self.instance, self.path_table, self.subset_size)
+            return self.fill_cc_with_random_walks(largest_cc)#random_dh.generate_subset(initial_subset=largest_cc)
         return largest_cc
+    def fill_cc_with_random_walks(self, connected_component):
+        # Make copy of agents in connected component
+        chosen_ids = connected_component[:]
+
+        # Iteratively choose a random agent and start a random walk from  a point on its path until it collides with another agent
+        while len(chosen_ids) < self.subset_size:
+            agent_id = self.random_walk_from_random_point_until_collision(chosen_ids, connected_component)
+
+            if agent_id > -1:
+                assert agent_id not in chosen_ids
+                chosen_ids += [agent_id]
+        return chosen_ids
+
+    def random_walk_from_random_point_until_collision(self, chosen_ids, connected_component):
+        # Get pre-calculated make-span of solution
+        makespan = self.path_table.makespan
+
+        # Get graph representation of map
+        map_graph = self.instance.map_graph
+
+        # Choose random robot from connected component
+        agent_id = int(np.random.choice(connected_component, 1))
+
+        # Retrieve path for agent
+        path_id = self.instance.agents[agent_id].path_id
+        path = self.instance.agents[agent_id].paths[path_id]
+
+        # Choose random point on agents path
+        initial_t = int(np.random.choice(len(path), 1))
+
+        loc = path[initial_t].tolist()
+
+        # TODO: fix paths going through obstacles so this is unnecessary
+        while tuple(loc) not in map_graph.nodes:
+            initial_t = int(np.random.choice(len(path), 1))
+            loc = path[initial_t].tolist()
+
+        # Random walk along time-space grid to find colliding agent
+        for t in range (initial_t, makespan+1):
+            point = (*loc,t)
+            agents_at_point = self.path_table.table[point]
+            colliding_agents = set.difference(agents_at_point, chosen_ids)
+            if len(colliding_agents) > 0:
+                return int(np.random.choice(list(colliding_agents), 1))
+            try:
+                loc = get_random_neighbor(map_graph, tuple(loc))
+            except:
+                print('oh')
+
+
+        return -1
+
+
 
 
 class ArgmaxDestroyHeuristic(DestroyHeuristic):

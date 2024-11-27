@@ -14,9 +14,13 @@ class PathTable:
     """
 
     table: defaultdict[tuple[int, int, int], set[int]]
+    collision_matrix: np.ndarray
+    num_of_collision_points: int
 
-    def __init__(self, num_of_rows, num_of_cols):
+    def __init__(self, num_of_rows, num_of_cols, num_of_agents=500):
         self.table = defaultdict(set)
+        self.collisions_matrix = np.zeros((num_of_agents + 1, num_of_agents + 1))
+        self.num_of_collision_points = 0
         self.makespan = -1
 
     def insert_path(self, agent_id, path):
@@ -24,11 +28,21 @@ class PathTable:
             self.insert_point(agent_id, x, y, t)
 
     def insert_point(self, agent_id, x, y, t):
+        print(f"Inserting agent {agent_id} at ({x},{y}) at time {t}")
+        if self.table[x, y, t]:
+            for agent in self.table[x, y, t]:
+                self.collisions_matrix[agent_id, agent] = 1
+                self.collisions_matrix[agent, agent_id] = 1
+                self.num_of_collision_points += 1
         self.table[x, y, t].add(agent_id)
 
     def remove_path(self, agent_id, path):
         for (x, y), t in zip(path, range(len(path))):
             self.table[x, y, t].remove(agent_id)
+            for agent in self.table[x, y, t]:
+                self.collisions_matrix[agent_id, agent] = 0
+                self.collisions_matrix[agent, agent_id] = 0
+                self.num_of_collision_points -= 1
 
     def is_path_available(self, path):
         for (x, y), t in zip(path, range(len(path))):
@@ -43,24 +57,12 @@ class PathTable:
 
     def num_collisions(self, num_robots = 90):
         return self.num_collisions_in_robots(num_robots)
-        count = 0
-        for time_list in self.table.values():
-            for point_set in time_list:
-                if len(point_set) > 1:
-                    count += 1
-        return count
 
     def num_collisions_in_robots(self, num_robots = 90):
-        return self.get_collisions_matrix(num_robots).sum()//2
+        return self.num_of_collision_points
 
     def get_collisions_matrix(self, num_robots):
-        matrix = np.zeros((num_robots+1,num_robots+1))
-        for _, agent_ids in self.table.items():
-            if len(agent_ids) > 1:
-                for i,j in itertools.combinations(agent_ids, 2):
-                    matrix[i, j] = 1
-                    matrix[j, i] = 1
-        return matrix.astype(int)
+        return self.collisions_matrix[:num_robots, :num_robots]
 
     def get_agent_collisions_for_paths(self, agent: Agent.Agent, num_robots):
         n_paths = agent.n_paths

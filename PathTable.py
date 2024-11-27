@@ -75,3 +75,9 @@ class PathTable:
                             # print(f'**** agent {agent.id} collides with agent {colliding_agent_id}')
                             matrix[path_index][colliding_agent_id] = 1
         return matrix.sum(axis = 1).astype(int).tolist()
+
+    def calculate_makespan(self):
+        makespan = -1
+        for (_,_,t), _ in self.table.items():
+            makespan = max(t, makespan)
+        self.makespan = makespan

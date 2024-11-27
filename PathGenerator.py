@@ -90,7 +90,7 @@ def create_random_step_path(instance, start, end, num_of_rows, num_of_cols, temp
 
     cur_point = path[0]
     while not np.array_equal(cur_point,end) and aux.manhattan_dist(cur_point, end) > 1:
-        new_point = create_random_point_toward_end(instance, cur_point,end, temp)
+        new_point = create_random_point_toward_end_with_obstacles(instance, cur_point,end, temp)
         if is_point_valid(new_point, num_of_rows, num_of_cols):# and instance.map[new_point[0], new_point[1]] != 1:
             cur_point = new_point
             path += [cur_point]

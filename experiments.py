@@ -2,7 +2,6 @@ from typing import TypedDict
 import instance
 from logger import Logger
 import solvers
-import LowLevelSolvers
 from PathTable import PathTable
 import os
 import pandas as pd
@@ -11,9 +10,9 @@ import numpy as np
 from plotter import *
 from graphMethods import *
 import itertools
-import tqdm
 from visualization import visualize, draw_graph_highlight_paths
 from PathGenerator import k_shortest_paths
+import tqdm
 
 def run_scenario(map_path, agent_path, solver, log_file = 'experiments.csv', verbose = True, n_paths = 2, temp = 1):
     inst = instance.instance(map_path, agent_path, solver, verbose, n_paths, agent_path_temp = temp)
@@ -121,7 +120,7 @@ def destroy_method_ablation_exp(map_path, agent_path, solver_name, verbose = Tru
 
 
 def test_exp(map_path, agent_path, solver_name, verbose = True, n_paths = 3, temp = 1):
-    # open('test.csv', "a")
+    #open('test.csv', "a")
     group_sizes = [20]#range(1, 12)
     solvers_list = ['pp','rank-pp']#range(1, 12)
     variants = list(itertools.product(group_sizes, solvers_list))
@@ -134,8 +133,8 @@ def test_exp(map_path, agent_path, solver_name, verbose = True, n_paths = 3, tem
         adj_matrix = t.get_collisions_matrix(s.num_agents)
         largest_cc = get_largest_connected_component(adj_matrix)
         random_walk_until_neighborhood_is_full(adj_matrix, largest_cc, subset_size=5)
-        # print(t.get_collisions_matrix(s.num_agents).sum(axis=1))
-        # t.get_agent_collisions_for_paths(s.agents[2], s.num_agents)
+        #print(t.get_collisions_matrix(s.num_agents).sum(axis=1))
+        #t.get_agent_collisions_for_paths(s.agents[2], s.num_agents)
         solver = solvers.IterativeRandomLNS(s, t, size, destroy_method_name='cc',low_level_solver_name = solver_name, num_iterations= 3000)
         x_axis = range(solver.num_iterations + 1)
         solver.run()

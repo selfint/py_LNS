@@ -11,8 +11,9 @@ import numpy as np
 from plotter import *
 from graphMethods import *
 import itertools
-from visualization import visualize
 import tqdm
+from visualization import visualize, draw_graph_highlight_paths
+from PathGenerator import k_shortest_paths
 
 def run_scenario(map_path, agent_path, solver, log_file = 'experiments.csv', verbose = True, n_paths = 2, temp = 1):
     inst = instance.instance(map_path, agent_path, solver, verbose, n_paths, agent_path_temp = temp)
@@ -96,20 +97,19 @@ def exhaustive_vs_random_exp(map_path, agent_path, solver_name, verbose = True, 
     y_labels = solvers_list
     plot_line_graphs(x_axis, collision_counts, label, x_axis_label,y_axis_label, y_labels)
 
-def destroy_method_ablation_exp(map_path, agent_path, solver_name, verbose = True, n_paths = 3, temp = 1):
+def destroy_method_ablation_exp(map_path, agent_path, solver_name, verbose = True, n_paths = 8, temp = 1):
     #open('test.csv', "a")
-    ds_list = ['cc', 'w-random', 'random']#range(1, 12)
+    ds_list = ['cc', 'random', 'w-random']#range(1, 12)
     collision_counts = []
     x_axis = []
     for ds in ds_list:
         s = instance.instance(map_path, agent_path, solver_name, verbose, n_paths, temp)
-        t = PathTable(s.num_of_rows, s.num_of_cols)
+        t = PathTable(s.num_of_rows, s.num_of_cols, num_of_agents=s.num_agents)
+        paths = k_shortest_paths(s.map_graph, (1,26), (25,1), 7)
+        [print(path) for path in paths]
+        draw_graph_highlight_paths(s.map_graph, paths)
         solvers.random_initial_solution(s, t)
-        fig, ax = plt.subplots()
-        visualize(s, t, ax, n_paths)
-        assert False
-        t.calculate_makespan()
-        solver = solvers.IterativeRandomLNS(s, t, 15, destroy_method_name=ds, num_iterations= 5000, low_level_solver_name=solver_name)
+        solver = solvers.IterativeRandomLNS(s, t, 10, destroy_method_name=ds, num_iterations= 500, low_level_solver_name=solver_name)
         x_axis = range(solver.num_iterations + 1)
         solver.run()
         collision_counts += [solver.collision_statistics]

@@ -70,7 +70,7 @@ class instance:
             print(f'**** Successfully loaded {self.num_agents} agents! ****\n')
         self.agents = {i: Agent(self, i, s, t, self.n_paths) for i, s, t in (zip(range(1, self.num_agents+1), self.start_locations, self.goal_locations))}
         for agent in self.agents.values():
-            agent.generate_paths(self.num_of_rows, self.num_of_cols, self.agent_path_temp)
+            agent.generate_paths()
 
     def verify_and_repair_agents(self):
         new_starts = []
@@ -87,7 +87,7 @@ class instance:
                         start = list(new_loc)
                         break
             new_starts += [start]
-        self.start_locations = new_starts
+        self.start_locations = [tuple(start) for start in new_starts]
 
         new_goals = []
         for goal in self.goal_locations:
@@ -103,7 +103,11 @@ class instance:
                         goal = list(new_loc)
                         break
             new_goals += [goal]
-        self.goal_locations = new_goals
+        self.goal_locations = [tuple(goal) for goal in new_goals]
+        for start, goal in zip (self.start_locations, self.goal_locations):
+            assert tuple(start) in self.map_graph.nodes
+            assert tuple(goal) in self.map_graph.nodes
+        pass
 
 
 

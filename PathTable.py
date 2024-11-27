@@ -28,7 +28,7 @@ class PathTable:
             self.insert_point(agent_id, x, y, t)
 
     def insert_point(self, agent_id, x, y, t):
-        print(f"Inserting agent {agent_id} at ({x},{y}) at time {t}")
+        # print(f"Inserting agent {agent_id} at ({x},{y}) at time {t}")
         if self.table[x, y, t]:
             for agent in self.table[x, y, t]:
                 self.collisions_matrix[agent_id, agent] = 1

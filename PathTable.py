@@ -24,11 +24,11 @@ class PathTable:
         self.makespan = -1
 
     def insert_path(self, agent_id, path):
-        for (x, y), t in zip(path.tolist(), range(len(path))):
+        for (x, y), t in zip(path, range(len(path))):
             self.insert_point(agent_id, x, y, t)
 
     def insert_point(self, agent_id, x, y, t):
-        print(f"Inserting agent {agent_id} at ({x},{y}) at time {t}")
+        # print(f"Inserting agent {agent_id} at ({x},{y}) at time {t}")
         if self.table[x, y, t]:
             for agent in self.table[x, y, t]:
                 self.collisions_matrix[agent_id, agent] = 1
@@ -81,4 +81,3 @@ class PathTable:
         for (_,_,t), _ in self.table.items():
             makespan = max(t, makespan)
         self.makespan = makespan
-

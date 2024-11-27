@@ -49,10 +49,18 @@ class PathTable:
         Note:
             Detects 'swap' collisions only, since other collisions are
             handled by insert_point.
+
+            A 'swap' collision is defined as:
+            (px, py, pt) -> (x, y, t)
+            (px, py, t)  <- (x, y, pt)
+
+            Where t - pt == 1
         """
 
         edge = px, py, pt, x, y, t
         collision_edge = x, y, pt, px, py, t
+
+        assert t - pt == 1, "got invalid edge, timestamp diff > 1"
 
         self.edges[edge].add(agent_id)
 
@@ -86,9 +94,19 @@ class PathTable:
             prev = x, y, t
 
     def is_path_available(self, path):
+        prev = None
         for (x, y), t in zip(path, range(len(path))):
             if self.table[x, y, t]:
                 return False
+
+            if prev is not None:
+                px, py, pt = prev
+                collision_edge = x, y, pt, px, py, t
+
+                if self.edges[collision_edge]:
+                    return False
+
+            prev = x, y, t
 
     def count_collisions_points_along_path(self, path):
         unique_agents = set.union(*(self.table[x, y, t] for (x, y), t in zip(path, range(len(path)))))
@@ -111,12 +129,24 @@ class PathTable:
         n_paths = agent.n_paths
         matrix = np.zeros((n_paths,num_robots+1))
         for path_index, path in enumerate(agent.paths):
+            prev = None
             for (x, y), t in zip(path, range(len(path))):
                 if self.table[x, y, t]:
                     for colliding_agent_id in self.table[x, y, t]:
                         if colliding_agent_id != agent.id:
                             # print(f'**** agent {agent.id} collides with agent {colliding_agent_id}')
                             matrix[path_index][colliding_agent_id] = 1
+
+                if prev is not None:
+                    px, py, pt = prev
+                    collision_edge = x, y, pt, px, py, t
+
+                    for colliding_agent_id in self.edges[collision_edge]:
+                        if colliding_agent_id != agent.id:
+                            matrix[path_index][colliding_agent_id] = 1
+
+                prev = x, y, t
+
         return matrix.sum(axis = 1).astype(int).tolist()
 
     def calculate_makespan(self):

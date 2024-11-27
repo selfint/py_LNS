@@ -186,9 +186,9 @@ class PathTable:
         matrix = np.zeros((n_paths,num_robots+1))
         for path_index, path in enumerate(agent.paths):
             for vertex, edge in iter_path(path):
-                colliding_vertices = self.table[vertex]
-                colliding_edges = set() if edge is None else self.edges[edge.reverse()]
-                collisions = set.union(colliding_vertices, colliding_edges)
+                vertex_collisions = self.table[vertex]
+                edge_collisions = set() if edge is None else self.edges[edge.reverse()]
+                collisions = set.union(vertex_collisions, edge_collisions)
 
                 for colliding_agent_id in collisions:
                     if colliding_agent_id != agent.id:

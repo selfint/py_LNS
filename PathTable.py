@@ -19,13 +19,21 @@ class PathTable:
 
     def __init__(self, num_of_rows, num_of_cols, num_of_agents=500):
         self.table = defaultdict(set)
+        self.edges = defaultdict(set)
         self.collisions_matrix = np.zeros((num_of_agents + 1, num_of_agents + 1))
         self.num_of_collision_points = 0
         self.makespan = -1
 
     def insert_path(self, agent_id, path):
+        prev = None
         for (x, y), t in zip(path, range(len(path))):
             self.insert_point(agent_id, x, y, t)
+
+            if prev is not None:
+                px, py, pt = prev
+                self.insert_edge(agent_id, px, py, pt, x, y, t)
+
+            prev = x, y, t
 
     def insert_point(self, agent_id, x, y, t):
         # print(f"Inserting agent {agent_id} at ({x},{y}) at time {t}")
@@ -36,7 +44,26 @@ class PathTable:
                 self.num_of_collision_points += 1
         self.table[x, y, t].add(agent_id)
 
+    def insert_edge(self, agent_id, px, py, pt, x, y, t):
+        """
+        Note:
+            Detects 'swap' collisions only, since other collisions are
+            handled by insert_point.
+        """
+
+        edge = px, py, pt, x, y, t
+        collision_edge = x, y, pt, px, py, t
+
+        self.edges[edge].add(agent_id)
+
+        for agent in self.edges[collision_edge]:
+            self.collisions_matrix[agent_id, agent] = 1
+            self.collisions_matrix[agent, agent_id] = 1
+            self.num_of_collision_points += 1
+
     def remove_path(self, agent_id, path):
+        prev = None
+
         for (x, y), t in zip(path, range(len(path))):
             self.table[x, y, t].remove(agent_id)
             for agent in self.table[x, y, t]:
@@ -44,16 +71,32 @@ class PathTable:
                 self.collisions_matrix[agent, agent_id] = 0
                 self.num_of_collision_points -= 1
 
+            if prev is not None:
+                px, py, pt = prev
+                edge = px, py, pt, x, y, t
+                collision_edge = x, y, pt, px, py, t
+
+                self.edges[edge].remove(agent_id)
+
+                for agent in self.edges[collision_edge]:
+                    self.collisions_matrix[agent_id, agent] = 0
+                    self.collisions_matrix[agent, agent_id] = 0
+                    self.num_of_collision_points -= 1
+
+            prev = x, y, t
+
     def is_path_available(self, path):
         for (x, y), t in zip(path, range(len(path))):
             if self.table[x, y, t]:
                 return False
 
     def count_collisions_points_along_path(self, path):
-        return sum(len(self.table[x, y, t]) > 0 for (x, y), t in zip(path, range(len(path))))
+        unique_agents = set.union(*(self.table[x, y, t] for (x, y), t in zip(path, range(len(path)))))
+        return len(unique_agents)
 
     def count_collisions_points_along_existing_path(self, path):
-        return sum(len(self.table[x, y, t]) > 1 for (x, y), t in zip(path, range(len(path))))
+        unique_agents = set.union(*(self.table[x, y, t] for (x, y), t in zip(path, range(len(path)))))
+        return len(unique_agents)
 
     def num_collisions(self, num_robots = 90):
         return self.num_collisions_in_robots(num_robots)
@@ -62,7 +105,7 @@ class PathTable:
         return self.num_of_collision_points
 
     def get_collisions_matrix(self, num_robots):
-        return self.collisions_matrix[:num_robots, :num_robots]
+        return self.collisions_matrix[: num_robots + 1, : num_robots + 1]
 
     def get_agent_collisions_for_paths(self, agent: Agent.Agent, num_robots):
         n_paths = agent.n_paths

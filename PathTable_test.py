@@ -251,3 +251,29 @@ def test_get_agent_collisions_for_paths():
     assert path_2_collisions[1] == [((0, 2, 2, 1, 2, 3), {1})]
 
     assert table.get_agent_collisions_for_paths(agent, num_of_agents) == [0, 2, 1]
+
+
+def test_is_path_available():
+    num_of_agents = 2
+    table = PathTable(3, 3, num_of_agents)
+    path_1 = build_path_from_grid([
+        [ 0,  1,  2],
+        [__, __,  3],
+        [__, __, __],
+    ])
+    path_2 = build_path_from_grid([
+        [__, __,  3],
+        [ 0,  1,  2],
+        [__, __, __],
+    ])
+    path_3 = build_path_from_grid([
+        [ 3,  2, __],
+        [ 0,  1, __],
+        [__, __, __],
+    ])
+
+    table.insert_path(1, path_1)
+
+    assert not table.is_path_available(path_1)
+    assert not table.is_path_available(path_2)
+    assert table.is_path_available(path_3)

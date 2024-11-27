@@ -177,7 +177,7 @@ def optimistic_iteration_exp(
         inst.agents = new_agents
         inst.num_agents = len(new_agents)
 
-    table = PathTable(inst.num_of_rows, inst.num_of_cols)
+    table = PathTable(inst.num_of_rows, inst.num_of_cols, inst.num_agents)
 
     group_size = 20
 

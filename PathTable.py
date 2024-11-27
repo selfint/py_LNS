@@ -21,9 +21,10 @@ class PathTable:
         self.table = defaultdict(set)
         self.collisions_matrix = np.zeros((num_of_agents + 1, num_of_agents + 1))
         self.num_of_collision_points = 0
+        self.makespan = -1
 
     def insert_path(self, agent_id, path):
-        for (x, y), t in zip(path, range(len(path))):
+        for (x, y), t in zip(path.tolist(), range(len(path))):
             self.insert_point(agent_id, x, y, t)
 
     def insert_point(self, agent_id, x, y, t):
@@ -74,3 +75,10 @@ class PathTable:
                             # print(f'**** agent {agent.id} collides with agent {colliding_agent_id}')
                             matrix[path_index][colliding_agent_id] = 1
         return matrix.sum(axis = 1).astype(int).tolist()
+
+    def calculate_makespan(self):
+        makespan = -1
+        for (_,_,t), _ in self.table.items():
+            makespan = max(t, makespan)
+        self.makespan = makespan
+

@@ -16,6 +16,7 @@ def visualize(
     ax: plt.Axes,
     max_paths: int = 10,
     verbose: bool = False,
+    fontsize: int = 8,
 ) -> None:
     """
     Visualize agent paths on the grid.
@@ -52,24 +53,49 @@ def visualize(
             continue
 
         cmatrix = path_table.get_agent_collisions_for_paths(agent, inst.num_agents)
+
+        # sanity check
+        vertices, edges = path_table.get_agent_collisions_for_path(agent.id, agent.paths[agent.path_id])
+        vertices_agents = set() if len(vertices) == 0 else set.union(*(ids for _, ids in vertices))
+        edge_agents = set() if len(edges) == 0 else set.union(*(ids for _, ids in edges))
+        unique_agents = len(set.union(vertices_agents, edge_agents))
+        assert unique_agents == cmatrix[agent.path_id]
+
         does_collide = cmatrix[agent.path_id] > 0
         if does_collide:
             collisions.append((agent_id, agent))
         else:
             no_collisions.append((agent_id, agent))
 
-    collisions_2d = np.zeros((inst.num_of_rows, inst.num_of_cols))
-    relevant_ids = set(agent_id for agent_id, _ in collisions[:max_paths])
-    for agent_id, agent in collisions[:max_paths]:
-        for timestamp, (row, col) in enumerate(agent.paths[agent.path_id]):
-            others = set(path_table.table[(row, col, timestamp)])
+    collisions = collisions[:max_paths]
 
-            # check if there are other agents in the same cell
-            if len(others & relevant_ids) > 1:
-                collisions_2d[row][col] = 1
+    vertex_collisions = set()
+    edge_collisions = set()
 
-    for x, y in zip(*np.where(collisions_2d)):
-        ax.text(y, x, "X", color="red", ha="center", va="center", fontsize=8)
+    relevant_ids = set(agent_id for agent_id, _ in collisions)
+    for agent_id, agent in collisions:
+        vertices, edges = path_table.get_agent_collisions_for_path(
+            agent_id, agent.paths[agent.path_id]
+        )
+
+        for (x, y, _), others in vertices:
+            if len((others & relevant_ids) - {agent_id}) > 0:
+                vertex_collisions.add((x, y))
+
+        for edge, others in edges:
+            if len((others & relevant_ids) - {agent_id}) > 0:
+                x, y, _, px, py, _ = edge
+                x, y = ((x + px) / 2, (y + py) / 2)
+
+                edge_collisions.add((x, y))
+
+    for x, y in vertex_collisions:
+        ax.text(y, x, "X", color="red", ha="center", va="center", fontsize=fontsize)
+
+    for x, y in edge_collisions:
+        ax.text(
+            y, x, "X", color="blue", ha="center", va="center", fontsize=fontsize
+        )
 
     if verbose:
         print("No collisions:", len(no_collisions))
@@ -94,12 +120,12 @@ def visualize(
         # mark start and end
         y, x = agent.start
         ax.text(
-            x, y, f"S{agent_id}", color="black", ha="center", va="center", fontsize=4
+            x, y, f"S{agent_id}", color="black", ha="center", va="center", fontsize=fontsize // 2
         )
 
         y, x = agent.end
         ax.text(
-            x, y, f"E{agent_id}", color="black", ha="center", va="center", fontsize=4
+            x, y, f"E{agent_id}", color="black", ha="center", va="center", fontsize=fontsize // 2
         )
 
         # add legend entry
@@ -111,7 +137,6 @@ def visualize(
     ax.set_title("Agent paths")
 
     # Positioning the legend outside the plot
-    print(len(legend_patches), len(legend_patches) % 10 + 1)
     ax.legend(
         handles=legend_patches,
         loc="upper left",
@@ -122,7 +147,6 @@ def visualize(
 
     # Ensure the layout accommodates the legend on the right
     # plt.subplots_adjust(right=1.6)
-    plt.show()
 
     # move x-axis to the top
     ax.xaxis.set_label_position("top")
@@ -146,6 +170,7 @@ def visualize(
     # Remove minor ticks
     ax.tick_params(which="minor", bottom=False, left=False)
 
-    # clear axis labels
-    ax.set_xticks([])
-    ax.set_yticks([])
+    # Remove axis labels and ticks
+    ax.set_xticklabels([])
+    ax.set_yticklabels([])
+    ax.tick_params(axis="both", which="both", bottom=False, top=False, left=False, right=False)

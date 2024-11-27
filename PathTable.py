@@ -10,6 +10,9 @@ class Vertex(NamedTuple):
     y: int
     t: int
 
+    def to_int(self) -> "Vertex":
+        return int(self.x), int(self.y), int(self.t)
+
 
 class Edge(NamedTuple):
     px: int
@@ -19,7 +22,7 @@ class Edge(NamedTuple):
     y: int
     t: int
 
-    def reverse(self):
+    def reverse(self) -> "Edge":
         """
         Given this edge:
         (px, py, pt) -> (x, y, t)
@@ -34,6 +37,9 @@ class Edge(NamedTuple):
         assert self.t - self.pt == 1, "got invalid edge, timestamp diff > 1"
 
         return self.x, self.y, self.pt, self.px, self.py, self.t
+
+    def to_int(self) -> "Edge":
+        return int(self.px), int(self.py), int(self.pt), int(self.x), int(self.y), int(self.t)
 
 
 def iter_vertices(path: list[tuple[int, int]]) -> Generator[Vertex, None, None]:
@@ -119,7 +125,7 @@ class PathTable:
         """
         Note:
             Detects 'swap' collisions only, since other collisions are
-            handled by insert_point.
+            handled by insert_vertex.
 
             A 'swap' collision occurs if these two edges exist:
             (px, py, pt) -> (x, y, t)
@@ -180,6 +186,35 @@ class PathTable:
 
     def get_collisions_matrix(self, num_robots):
         return self.collisions_matrix[: num_robots + 1, : num_robots + 1]
+
+    def get_agent_collisions_for_path(
+        self, agent_id: int, path
+    ) -> tuple[list[tuple[Vertex, set[int]]], list[tuple[Edge, set[int]]]]:
+        """
+        Get all the collisions for a path.
+
+        Args:
+            agent_id (int): the agent id
+            path (list[tuple[int, int]]): the path
+
+        Returns:
+            tuple[list[tuple[Vertex, set[int]], tuple[Edge, set[int]]]]:
+                the vertices and edges with the agents that
+                collide with the given agent_id
+        """
+
+        vertices = [
+            (v, self.table[v] - {agent_id})
+            for v in iter_vertices(path)
+            if len(self.table[v] - {agent_id}) > 0
+        ]
+        edges = [
+            (e, self.edges[e.reverse()] - {agent_id})
+            for e in iter_edges(path)
+            if len(self.edges[e.reverse()] - {agent_id}) > 0
+        ]
+
+        return vertices, edges
 
     def get_agent_collisions_for_paths(self, agent: Agent.Agent, num_robots):
         n_paths = agent.n_paths

@@ -1,5 +1,6 @@
+import numpy as np
 from Agent import Agent
-from PathTable import PathTable
+from PathTable import Edge, PathTable
 
 
 __ = -1
@@ -25,11 +26,59 @@ def build_path_from_grid(grid: list[list[int]]) -> list[tuple[int, int]]:
     assert path_len == len(path), ("invalid path", path)
     assert all(step is not None for step in path), ("missing path index", path)
 
-    return path
+    return np.array(path)
 
 
 def format_cmatrix_for_diff(cm: list[list[int]]) -> str:
     return "\n".join(" ".join(f"{int(x):3}" for x in row) for row in cm)
+
+
+def test_path_table_vertices():
+    num_of_agents = 2
+    table = PathTable(3, 3, num_of_agents)
+
+    table.insert_path(1, build_path_from_grid([
+        [ 0,  1,  2],
+        [__, __,  3],
+        [__, __, __],
+    ]))
+    table.insert_path(2, build_path_from_grid([
+        [__, __, __],
+        [ 1,  2,  3],
+        [ 0, __, __],
+    ]))
+
+    assert table.table[0, 0, 0] == {1}
+    assert table.table[0, 0, 0] == {1}
+    assert table.table[0, 1, 1] == {1}
+    assert table.table[0, 2, 2] == {1}
+
+    assert table.table[2, 0, 0] == {2}
+    assert table.table[1, 0, 1] == {2}
+    assert table.table[1, 1, 2] == {2}
+
+    assert table.table[1, 2, 3] == {1, 2}
+
+def test_path_table_edges():
+    num_of_agents = 2
+    table = PathTable(3, 3, num_of_agents)
+    table.insert_path(1, build_path_from_grid([
+        [ 0,  1,  2],
+        [__, __,  3],
+        [__, __, __],
+    ]))
+    table.insert_path(2, build_path_from_grid([
+        [__, __,  3],
+        [ 0,  1,  2],
+        [__, __, __],
+    ]))
+
+    assert table.edges[0, 0, 0, 0, 1, 1] == {1}
+    assert table.edges[0, 1, 1, 0, 2, 2] == {1}
+    assert table.edges[0, 2, 2, 1, 2, 3] == {1}
+    assert table.edges[1, 0, 0, 1, 1, 1] == {2}
+    assert table.edges[1, 1, 1, 1, 2, 2] == {2}
+    assert table.edges[1, 2, 2, 0, 2, 3] == {2}
 
 
 def test_path_table_vertex_collisions():
@@ -175,7 +224,7 @@ def test_get_agent_collisions_for_paths():
         build_path_from_grid([
             [__,  2,  3],  # collision at 3 with path 1
             [__,  1, __],  # collision at 1 with path 2
-            [__,  0, __],
+            [__,  0, __],  # collision at 0 with path 1
         ]),
         # 1 edge collision
         build_path_from_grid([
@@ -184,5 +233,21 @@ def test_get_agent_collisions_for_paths():
             [__, __, __],
         ]),
     ]
+
+    path_0_collisions = table.get_agent_collisions_for_path(agent.id, agent.paths[0])
+    assert path_0_collisions == ([], [])
+
+    path_1_collisions = table.get_agent_collisions_for_path(agent.id, agent.paths[1])
+    assert len(path_1_collisions) == 2
+    assert path_1_collisions[0] == [
+        ((2, 1, 0), {1}),
+        ((1, 1, 1), {2}),
+        ((0, 2, 3), {1})
+    ]
+    assert path_1_collisions[1] == []
+
+    path_2_collisions = table.get_agent_collisions_for_path(agent.id, agent.paths[2])
+    assert path_2_collisions[0] == []
+    assert path_2_collisions[1] == [((0, 2, 2, 1, 2, 3), {1})]
 
     assert table.get_agent_collisions_for_paths(agent, num_of_agents) == [0, 2, 1]

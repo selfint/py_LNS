@@ -19,6 +19,7 @@ obstacle_alpha: float = 0.2
 class FrameObjects(NamedTuple):
     agent_img: dict[int, mpimg.AxesImage]
     collision_texts: list[plt.Text]
+    edge_collision_texts: list[plt.Text]
     arrows: dict[int, plt.Arrow]
     agent_colors: dict[int, tuple]
 
@@ -50,7 +51,7 @@ def setup(
         inst.num_of_rows, inst.num_of_cols
     )
 
-    max_timestamp = np.max([t for _x, _y, t in path_table.table]) + 1
+    max_timestamp = np.max([t for _, _, t in path_table.table]) + 1
 
     # fill grid at start_time
     grid_2d = np.zeros((inst.num_agents, inst.num_of_rows, inst.num_of_cols))
@@ -74,22 +75,42 @@ def setup(
         else:
             no_collisions.append((agent_id, agent))
 
-    collisions_2d = np.zeros((inst.num_of_rows, inst.num_of_cols))
-    relevant_ids = set(agent_id for agent_id, _ in collisions[:max_paths])
-    for agent_id, agent in collisions[:max_paths]:
-        for timestamp, (row, col) in enumerate(agent.paths[agent.path_id]):
-            others = set(path_table.table[row, col, timestamp])
+    collisions = collisions[:max_paths]
 
-            # check if there are other agents in the same cell
-            if len(others & relevant_ids) > 1:
-                collisions_2d[row][col] = timestamp
+    vertex_collisions = [set() for _ in range(max_timestamp)]
+    edge_collisions = [set() for _ in range(max_timestamp)]
+
+    relevant_ids = set(agent_id for agent_id, _ in collisions)
+    for agent_id, agent in collisions:
+        vertices, edges = path_table.get_agent_collisions_for_path(
+            agent_id, agent.paths[agent.path_id]
+        )
+
+        for (x, y, t), others in vertices:
+            if len((others & relevant_ids) - {agent_id}) > 0:
+                vertex_collisions[t].add((x, y))
+
+        for edge, others in edges:
+            if len((others & relevant_ids) - {agent_id}) > 0:
+                x, y, t, px, py, pt = edge
+                x, y = ((x + px) / 2, (y + py) / 2)
+
+                edge_collisions[t].add((x, y))
+                edge_collisions[pt].add((x, y))
 
     collision_texts = [[] for _ in range(max_timestamp)]
-    for x, y in zip(*np.where(collisions_2d)):
-        timestamp = int(collisions_2d[x][y])
-        collision_texts[timestamp].append(
-            ax.text(y, x, " ", color="red", ha="center", va="center", fontsize=16)
-        )
+    for timestamp, vertices in enumerate(vertex_collisions):
+        for (x, y) in vertices:
+            collision_texts[timestamp].append(
+                ax.text(y, x, " ", color="red", ha="center", va="center", fontsize=16)
+            )
+
+    edge_collision_texts = [[] for _ in range(max_timestamp)]
+    for timestamp, edges in enumerate(edge_collisions):
+        for (x, y) in edges:
+            edge_collision_texts[timestamp].append(
+                ax.text(y, x, " ", color="blue", ha="center", va="center", fontsize=16)
+            )
 
     if verbose:
         print("No collisions:", len(no_collisions))
@@ -97,17 +118,11 @@ def setup(
 
     # plot agent paths
     legend_patches = []
-    did_plot = 0
     agent_img = {}
     arrows = {}
     agent_colors = {}
     for agent_id, agent in collisions:
-        if agent.path_id == -1:
-            continue
-
-        did_plot += 1
-        if did_plot >= max_paths:
-            break
+        assert agent.path_id != -1, "got agent without active path"
 
         agent_grid = grid_2d[agent_id - 1]
 
@@ -187,6 +202,7 @@ def setup(
     return FrameObjects(
         agent_img,
         collision_texts,
+        edge_collision_texts,
         arrows,
         agent_colors,
     )
@@ -222,12 +238,19 @@ def update_frame(
         frame_objects.agent_img[agent_id].set_data(agent_grid)
 
     # update collision texts
-    for texts in frame_objects.collision_texts[: timestamp + 1]:
+    for t, texts in enumerate(frame_objects.collision_texts):
         for txt in texts:
-            txt.set_text("X")
-    for texts in frame_objects.collision_texts[timestamp + 1 :]:
+            if timestamp >= t:
+                txt.set_text("X")
+            else:
+                txt.set_text(" ")
+
+    for t, texts in enumerate(frame_objects.edge_collision_texts):
         for txt in texts:
-            txt.set_text(" ")
+            if timestamp >= t:
+                txt.set_text("X")
+            else:
+                txt.set_text(" ")
 
     # update arrows
     for agent_id in frame_objects.arrows:
@@ -259,9 +282,13 @@ def update_frame(
     flat_collisions_texts = [
         txt for sublist in frame_objects.collision_texts for txt in sublist
     ]
+    flat_edge_collision_texts = [
+        txt for sublist in frame_objects.edge_collision_texts for txt in sublist
+    ]
     return [
         *frame_objects.agent_img.values(),
         *flat_collisions_texts,
+        *flat_edge_collision_texts,
         *[arrow for arrow in frame_objects.arrows.values() if arrow is not None],
     ]
 
@@ -293,6 +320,8 @@ def animate(
     paths = [x for agent in inst.agents.values() for y in agent.paths for x in y]
     assert 0 <= np.min(paths) and np.max(paths) < min(
         inst.num_of_rows, inst.num_of_cols
+    ), (
+        0, np.min(paths), np.max(paths), (inst.num_of_rows, inst.num_of_cols)
     )
 
     fig.set_size_inches(16, 9)

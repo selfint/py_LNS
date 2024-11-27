@@ -8,6 +8,7 @@ from matplotlib.colors import ListedColormap
 from Agent import Agent
 import instance
 from PathTable import PathTable
+import networkx as nx
 
 
 def visualize(
@@ -149,3 +150,24 @@ def visualize(
     # clear axis labels
     ax.set_xticks([])
     ax.set_yticks([])
+
+
+
+def draw_graph_highlight_paths(graph, paths):
+    # Create graph figure
+    plt.figure(figsize=(6, 6))
+    # Shape as grid
+    pos = {(x, y): (y, -x) for x, y in graph.nodes()}
+    nx.draw(graph, pos=pos,
+            node_color='lightgreen',
+            node_size=60)
+    colors = ['r', 'g', 'b']
+    # draw path in red
+    for idx, path in enumerate(paths):
+        color = colors[idx%len(colors)]
+        #path = nx.shortest_path(graph, source=(1,1), target=(5,5))
+        path_edges = list(zip(path, path[1:]))
+        nx.draw_networkx_nodes(graph, pos, nodelist=path, node_color=color, node_size=60)
+        nx.draw_networkx_edges(graph, pos, edgelist=path_edges, edge_color=color, width=5)
+    plt.axis('equal')
+    plt.show()

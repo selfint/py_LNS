@@ -1,6 +1,7 @@
 import numpy as np
-
+from itertools import islice
 import aux
+import networkx as nx
 
 
 def softmax(x):
@@ -95,3 +96,9 @@ def create_random_step_path(instance, start, end, num_of_rows, num_of_cols, temp
             path += [cur_point]
     path += [end]
     return np.array(path)
+
+
+def k_shortest_paths(graph, source, target, k, weight=None):
+    return list(
+        islice(nx.shortest_simple_paths(graph, source, target, weight=weight), k)
+    )

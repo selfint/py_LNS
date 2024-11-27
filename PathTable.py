@@ -17,7 +17,7 @@ class PathTable:
     collision_matrix: np.ndarray
     num_of_collision_points: int
 
-    def __init__(self, num_of_rows, num_of_cols, num_of_agents=500):
+    def __init__(self, num_of_rows, num_of_cols, num_of_agents):
         self.table = defaultdict(set)
         self.collisions_matrix = np.zeros((num_of_agents + 1, num_of_agents + 1))
         self.num_of_collision_points = 0
@@ -62,7 +62,7 @@ class PathTable:
         return self.num_of_collision_points
 
     def get_collisions_matrix(self, num_robots):
-        return self.collisions_matrix[:num_robots, :num_robots]
+        return self.collisions_matrix
 
     def get_agent_collisions_for_paths(self, agent: Agent.Agent, num_robots):
         n_paths = agent.n_paths

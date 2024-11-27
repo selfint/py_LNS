@@ -169,6 +169,8 @@ class PathTable:
             if edge is not None and self.edges[edge.reverse()]:
                 return False
 
+        return True
+
     def count_collisions_points_along_path(self, path):
         vertices = set.union(*(self.table[v] for v in iter_vertices(path)))
         edges = set.union(*(self.edges[e.reverse()] for e in iter_edges(path)))

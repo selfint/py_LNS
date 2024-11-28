@@ -95,14 +95,14 @@ class PathTable:
     table: defaultdict[Vertex, set[int]]
     edges: defaultdict[Edge, set[int]]
     collision_matrix: np.ndarray
-    num_of_collision_points: int
+    num_of_unique_collisions: int
     makespan: int
 
     def __init__(self, num_of_rows, num_of_cols, num_of_agents):
         self.table = defaultdict(set)
         self.edges = defaultdict(set)
         self.collisions_matrix = np.zeros((num_of_agents + 1, num_of_agents + 1))
-        self.num_of_collision_points = 0
+        self.num_of_unique_collisions = 0
         self.makespan = -1
 
     def insert_path(self, agent_id, path):
@@ -116,9 +116,10 @@ class PathTable:
         # print(f"Inserting agent {agent_id} at ({x},{y}) at time {t}")
         if self.table[vertex]:
             for agent in self.table[vertex]:
+                diff = 1 - self.collisions_matrix[agent_id, agent]
                 self.collisions_matrix[agent_id, agent] = 1
                 self.collisions_matrix[agent, agent_id] = 1
-                self.num_of_collision_points += 1
+                self.num_of_unique_collisions += diff
         self.table[vertex].add(agent_id)
 
     def insert_edge(self, agent_id: int, edge: Edge):
@@ -140,26 +141,29 @@ class PathTable:
         self.edges[edge].add(agent_id)
 
         for agent in self.edges[collision_edge]:
+            diff = 1 - self.collisions_matrix[agent_id, agent]
             self.collisions_matrix[agent_id, agent] = 1
             self.collisions_matrix[agent, agent_id] = 1
-            self.num_of_collision_points += 1
+            self.num_of_unique_collisions += diff
 
     def remove_path(self, agent_id, path):
         for vertex, edge in iter_path(path):
             self.table[vertex].remove(agent_id)
             for agent in self.table[vertex]:
+                diff = self.collisions_matrix[agent_id, agent]
                 self.collisions_matrix[agent_id, agent] = 0
                 self.collisions_matrix[agent, agent_id] = 0
-                self.num_of_collision_points -= 1
+                self.num_of_unique_collisions -= diff
 
             if edge is not None:
                 self.edges[edge].remove(agent_id)
                 collision_edge = edge.reverse()
 
                 for agent in self.edges[collision_edge]:
+                    diff = self.collisions_matrix[agent_id, agent]
                     self.collisions_matrix[agent_id, agent] = 0
                     self.collisions_matrix[agent, agent_id] = 0
-                    self.num_of_collision_points -= 1
+                    self.num_of_unique_collisions -= diff
 
     def is_path_available(self, path):
         for vertex, edge in iter_path(path):
@@ -184,7 +188,7 @@ class PathTable:
         return self.num_collisions_in_robots(num_robots)
 
     def num_collisions_in_robots(self, num_robots = 90):
-        return self.collisions_matrix.sum() // 2
+        return self.num_of_unique_collisions
 
     def get_collisions_matrix(self, num_robots):
         return self.collisions_matrix

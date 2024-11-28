@@ -106,6 +106,23 @@ def test_path_table_vertex_collisions():
     ])
     assert format_cmatrix_for_diff(cmatrix) == expected
 
+def test_path_table_unique_collisions():
+    num_of_agents = 2
+    table = PathTable(3, 3, num_of_agents)
+
+    table.insert_path(1, build_path_from_grid([
+        [ 0,  1,  2],
+        [__, __,  3],
+        [__, __, __],
+    ]))
+    table.insert_path(2, build_path_from_grid([
+        [ 0,  1,  2],
+        [__, __,  3],
+        [__, __, __],
+    ]))
+
+    assert table.num_collisions(num_of_agents) == 1
+
 
 def test_path_table_edge_collisions():
     num_of_agents = 2

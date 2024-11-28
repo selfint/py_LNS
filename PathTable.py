@@ -184,7 +184,7 @@ class PathTable:
         return self.num_collisions_in_robots(num_robots)
 
     def num_collisions_in_robots(self, num_robots = 90):
-        return self.num_of_collision_points
+        return self.collisions_matrix.sum() // 2
 
     def get_collisions_matrix(self, num_robots):
         return self.collisions_matrix

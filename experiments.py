@@ -264,3 +264,191 @@ def optimistic_iteration_exp(
         p_bar.set_description(f'Collisions: {solver.num_collisions}')
 
     return inst, table, results
+
+
+def parallel_solver_test_exp(
+    map_path, agent_path, n_paths, n_iterations, temp, verbose, executor_name
+):
+    """
+    Test that parallel solver with parallelism=1 is identical to
+    standard solver.
+    """
+
+    import copy
+    import time
+    from PathTable import iter_edges, iter_vertices
+
+    subset_size = 20
+
+    inst = instance.instance(
+        map_path,
+        agent_path,
+        n_paths=n_paths,
+        instance_name="Parallel solver experiment",
+        agent_path_temp=temp,
+        verbose=verbose,
+    )
+
+    table = PathTable(
+        inst.num_of_rows,
+        inst.num_of_cols,
+        inst.num_agents,
+    )
+    solvers.random_initial_solution(inst, table)
+
+    p_inst = copy.deepcopy(inst)
+    p_table = copy.deepcopy(table)
+
+    for agent, p_agent in zip(inst.agents.values(), p_inst.agents.values()):
+        assert (agent.id, agent.path_id) == (p_agent.id, p_agent.path_id)
+        np.testing.assert_equal(
+            agent.paths[agent.path_id], p_agent.paths[p_agent.path_id]
+        )
+
+    assert table.table == p_table.table
+    assert table.edges == p_table.edges
+
+    solver = solvers.IterativeRandomLNS(
+        inst, table, subset_size=subset_size, num_iterations=0
+    )
+
+    p_solver = solvers.ParallelIterativeRandomLNS(
+        p_inst,
+        p_table,
+        subset_size=subset_size,
+        parallelism=1,
+        num_iterations=0,  # we will run iterations manually
+        executor_name=executor_name
+    )
+
+    durations = []
+    p_durations = []
+    for iteration in tqdm.tqdm(range(n_iterations)):
+        random_state = np.random.get_state()
+        start = time.time()
+        solver.run_iteration()
+        duration_ms = (time.time() - start) * 1000
+
+        np.random.set_state(random_state)
+        start = time.time()
+        p_solver.run_iteration()
+        p_duration_ms = (time.time() - start) * 1000
+
+        durations.append(duration_ms)
+        p_durations.append(p_duration_ms)
+
+        table = solver.path_table
+        inst = solver.instance
+        p_table = p_solver.path_table
+        p_inst = p_solver.instance
+
+        for agent, p_agent in zip(inst.agents.values(), p_inst.agents.values()):
+            assert (agent.id, agent.path_id) == (p_agent.id, p_agent.path_id)
+            np.testing.assert_equal(
+                agent.paths[agent.path_id], p_agent.paths[p_agent.path_id]
+            )
+
+            vertices = list(iter_vertices(agent.paths[agent.path_id]))
+            edges = list(iter_edges(agent.paths[agent.path_id]))
+
+            for vertex in table.table:
+                if vertex in vertices:
+                    assert agent.id in table.table[vertex]
+                else:
+                    assert agent.id not in table.table[vertex]
+
+            for edge in table.edges:
+                if edge in edges:
+                    assert agent.id in table.edges[edge]
+                else:
+                    assert agent.id not in table.edges[edge]
+
+            for vertex in p_table.table:
+                if vertex in vertices:
+                    assert p_agent.id in p_table.table[vertex]
+                else:
+                    assert p_agent.id not in p_table.table[vertex]
+
+            for edge in p_table.edges:
+                if edge in edges:
+                    assert p_agent.id in p_table.edges[edge]
+                else:
+                    assert p_agent.id not in p_table.edges[edge]
+
+        assert table.table == p_table.table
+        assert table.edges == p_table.edges
+
+
+def parallelism_ablation_exp(
+    map_path, agent_path, n_paths, n_iterations, temp, verbose, results_dir, executor_name
+):
+    import time
+    from pathlib import Path
+
+    subset_size = 20
+
+    def run(parallelism: int) -> tuple[list[int], list[int]]:
+        inst = instance.instance(
+            map_path,
+            agent_path,
+            n_paths=n_paths,
+            instance_name="Parallelism ablation experiment",
+            agent_path_temp=temp,
+            verbose=verbose,
+        )
+
+        table = PathTable(
+            inst.num_of_rows,
+            inst.num_of_cols,
+            inst.num_agents,
+        )
+
+        solvers.random_initial_solution(inst, table)
+        solver = solvers.ParallelIterativeRandomLNS(
+            inst,
+            table,
+            subset_size=subset_size,
+            parallelism=parallelism,
+            num_iterations=0,  # we will run iterations manually
+            executor_name=executor_name
+        )
+
+        durations = []
+        collisions = []
+        pbar = tqdm.tqdm(range(n_iterations))
+        for iteration in pbar:
+            start = time.time()
+            solver.run_iteration()
+
+            cmatrix = solver.path_table.get_collisions_matrix(solver.instance.num_agents)
+            # count rows where sum > 0
+            agents_with_collisions = np.sum(np.sum(cmatrix, axis=1) > 0).item()
+            collisions.append(agents_with_collisions)
+
+            pbar.set_description(
+                f"Parallelism: {parallelism} "
+                f"Collisions: {solver.num_collisions} "
+                f"Agents: {agents_with_collisions}"
+            )
+
+            duration = time.time() - start
+            duration_ms = duration * 1000
+            durations.append(duration_ms)
+
+        return durations, collisions
+
+    parallelisms = list(range(1, 9))
+
+    results = []
+    for parallelism in parallelisms:
+        durations, collisions = run(parallelism)
+        results.append((parallelism, durations, collisions))
+
+    results_dir = Path(results_dir)
+    results_dir.mkdir(parents=True, exist_ok=True)
+
+    for parallelism, durations, collisions in results:
+        with (results_dir / f"p_{parallelism}.csv").open("w") as f:
+            f.write("duration,collisions\n")
+            for duration, collision in zip(durations, collisions):
+                f.write(f"{duration},{collision}\n")

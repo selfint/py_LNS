@@ -11,7 +11,7 @@ class Vertex(NamedTuple):
     t: int
 
     def to_int(self) -> "Vertex":
-        return int(self.x), int(self.y), int(self.t)
+        return Vertex(int(self.x), int(self.y), int(self.t))
 
 
 class Edge(NamedTuple):
@@ -39,7 +39,7 @@ class Edge(NamedTuple):
         return self.x, self.y, self.pt, self.px, self.py, self.t
 
     def to_int(self) -> "Edge":
-        return int(self.px), int(self.py), int(self.pt), int(self.x), int(self.y), int(self.t)
+        return Edge(int(self.px), int(self.py), int(self.pt), int(self.x), int(self.y), int(self.t))
 
 
 def iter_vertices(path: list[tuple[int, int]]) -> Generator[Vertex, None, None]:

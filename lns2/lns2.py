@@ -3,13 +3,15 @@ from typing import Tuple, List
 import random
 import networkx as nx
 from lns2.random_neighborhood_picker import RandomNeighborhoodPicker
+from lns2.safe_interval_table import SafeIntervalTable
 
 
 class LNS2:
     MAX_ITERATIONS = 1000
     NEIGHBORHOOD_SIZE = 10
+
     def __init__(self, graph: nx.Graph, agent_start_goal_list: Tuple[int, int, int],
-                 hard_obstacles: Tuple[int, int],
+                 hard_obstacles: List[Tuple[int, int]],
                  soft_obstacles: Tuple[int, int]):
         """
         Initialize the LNS solver.
@@ -37,7 +39,6 @@ class LNS2:
             new_solution = self.construct_new_solution(neighborhood, solution)
             if new_solution < solution:
                 solution = new_solution
-
 
     def init_initial_solution(self):
         solutions_dict = dict()
@@ -111,24 +112,8 @@ class LNS2:
         """
         open_list = []
         heappush(open_list, (0, start, 0, []))  # (cost, current_vertex, current_time, path)
-
         visited = set()
-        safe_intervals = {v: [] for v in self.graph.nodes}  # Stores safe time intervals for each vertex
-
-        # Generate safe intervals for all vertices based on existing agent paths
-        for agent_id, path in existing_paths.items():
-            for i, (vertex, time) in enumerate(path):
-                if vertex not in safe_intervals:
-                    safe_intervals[vertex] = []
-                safe_intervals[vertex].append((time, time + 1))  # Occupied vertex at specific times
-
-        # Create a function to get the safe time interval for a vertex
-        def get_safe_interval(vertex, current_time):
-            intervals = safe_intervals.get(vertex, [])
-            for start_time, end_time in intervals:
-                if current_time >= start_time and current_time < end_time:
-                    return False  # The vertex is blocked at this time
-            return True  # Vertex is safe at this time
+        safe_intervals = SafeIntervalTable(self.graph.nodes, existing_paths, self.hard_obstacles)
 
         while open_list:
             cost, current_vertex, current_time, path = heappop(open_list)
@@ -150,7 +135,7 @@ class LNS2:
                 if (neighbor, next_time) in self.hard_obstacles:
                     continue
                 # Check for safe intervals (avoid soft obstacles if possible)
-                if not get_safe_interval(neighbor, next_time):
+                if not safe_intervals.is_safe(neighbor, next_time):
                     continue
                 # Heuristic cost based on shortest path length
                 heuristic_cost = nx.shortest_path_length(self.graph, neighbor, goal)

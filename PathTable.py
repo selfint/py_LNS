@@ -36,7 +36,7 @@ class Edge(NamedTuple):
 
         assert self.t - self.pt == 1, "got invalid edge, timestamp diff > 1"
 
-        return self.x, self.y, self.pt, self.px, self.py, self.t
+        return Edge(self.x, self.y, self.pt, self.px, self.py, self.t)
 
     def to_int(self) -> "Edge":
         return Edge(int(self.px), int(self.py), int(self.pt), int(self.x), int(self.y), int(self.t))
@@ -188,7 +188,8 @@ class PathTable:
         return self.num_collisions_in_robots(num_robots)
 
     def num_collisions_in_robots(self, num_robots = 90):
-        return self.num_of_unique_collisions
+        # return self.num_of_unique_collisions
+        return np.sum(np.sum(self.collisions_matrix, axis=1) > 0).item()
 
     def get_collisions_matrix(self, num_robots):
         return self.collisions_matrix

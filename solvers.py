@@ -4,9 +4,8 @@ import PathTable
 import numpy as np
 from LowLevelSolvers import PPNeighborhoodRepair, ExhaustiveNeighborhoodRepair, RankPPNeighborhoodRepair, NeighborhoodRepair
 import DestroyMethods
-import numpy.typing as npt
 import copy
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 import typing
 
 def random_initial_solution(instance: instance.instance, path_table: PathTable.PathTable):
@@ -47,7 +46,7 @@ class RandomPP:
 
 
 class IterativeRandomLNS:
-    def __init__(self, instance: instance.instance, path_table:PathTable.PathTable, subset_size, num_iterations = 1000, destroy_method_name = 'priority', low_level_solver_name = 'pp'):
+    def __init__(self, instance: instance.instance, path_table:PathTable.PathTable, subset_size, num_iterations = 1000, destroy_method_name = 'priority', low_level_solver_name = 'pp', random_seed: int = None):
         self.instance = instance
         self.path_table = path_table
         self.subset_size = subset_size
@@ -66,6 +65,7 @@ class IterativeRandomLNS:
                         'rank-pp': RankPPNeighborhoodRepair,
                         'exhaustive': ExhaustiveNeighborhoodRepair}
         self.low_level_solver = solvers_list[low_level_solver_name]
+        self.random_seed = random_seed
 
 
 
@@ -97,9 +97,18 @@ class IterativeRandomLNS:
         self.collision_statistics += [self.num_collisions]
 
 
-    def run(self):
+    def run(self, early_stopping = False) -> tuple[typing.Self, int]:
+        # used for determinism in parallelization tests
+        if self.random_seed is not None:
+            np.random.seed(self.random_seed)
+
         for iteration in range(self.num_iterations):
+            prev_collisions = self.num_collisions
             self.run_iteration()
+            if early_stopping and (self.num_collisions < prev_collisions):
+                return self, iteration + 1
+
+        return self, self.num_iterations
 
 
 class ParallelIterativeRandomLNS:
@@ -122,7 +131,7 @@ class ParallelIterativeRandomLNS:
         num_iterations=1000,
         destroy_method_name="priority",
         low_level_solver_name="pp",
-        executor_name: typing.Literal["thread"] | typing.Literal["process"] = "process",
+        executor_name = "process",
     ):
         self.instance = instance
         self.path_table = path_table
@@ -131,111 +140,62 @@ class ParallelIterativeRandomLNS:
         self.num_iterations = num_iterations
         self.num_collisions = self.path_table.num_collisions(self.instance.num_agents)
         self.collision_statistics = [self.num_collisions]
-        destroy_methods = {'random': DestroyMethods.RandomDestroyHeuristic,
-                           'w-random': DestroyMethods.RandomWeightedDestroyHeuristic,
-                           'priority': DestroyMethods.PriorityDestroyHeuristic,
-                           'cc': DestroyMethods.ConnectedComponentDestroyHeuristic}
-        dm = destroy_methods[destroy_method_name]
-        self.destroy_heuristic = dm(instance, path_table, subset_size * parallelism)
-
-        solvers_list = {'pp': PPNeighborhoodRepair,
-                        'rank-pp': RankPPNeighborhoodRepair,
-                        'exhaustive': ExhaustiveNeighborhoodRepair}
-        self.low_level_solver = solvers_list[low_level_solver_name]
-
+        self.destroy_method_name = destroy_method_name
+        self.low_level_solver_name = low_level_solver_name
         self.parallelism = parallelism
-        self.executor_name: typing.Literal["thread"] | typing.Literal["process"] = (
-            executor_name
-        )
+        self.executor_name = executor_name
+
         if executor_name == "thread":
-            self.executor = ThreadPoolExecutor(max_workers=self.parallelism)
+            self.executor = ThreadPoolExecutor
         else:
-            self.executor = ProcessPoolExecutor(max_workers=self.parallelism)
+            self.executor = ProcessPoolExecutor
 
-    @staticmethod
-    def evaluate_subset(
-        instance: instance.instance,
-        path_table: PathTable.PathTable,
-        low_level_solver: NeighborhoodRepair,
-        subset: npt.NDArray,
-    ) -> tuple[int, PathTable.PathTable]:
-        """
-        Evaluate a subset of agents.
-
-        Note:
-            The value agent.path_id after this method is **will be the new
-            agent path**.
-
-        Args:
-            instance (instance.instance): the instance
-            path_table (PathTable.PathTable): the path table (will be modified in-place)
-            low_level_solver (NeighborhoodRepair): the low level solver
-            subset (npt.NDArray): the subset of agent ids to evaluate
-        
-        Returns:
-            tuple[int, PathTable.PathTable]: the number of collisions and the path table
-        """
-
-        low_level_solver = low_level_solver(
-            agent_cost_type="mean",
-            instance=instance,
-            path_table=path_table,
-            agent_subset=subset,
-            verbose=False,
+    def get_solver(self, do_copy: bool, random_seed: int) -> IterativeRandomLNS:
+        return IterativeRandomLNS(
+            instance=(
+                copy.deepcopy(self.instance) if do_copy else self.instance
+            ),
+            path_table=(
+                copy.deepcopy(self.path_table) if do_copy else self.path_table
+            ),
+            subset_size=self.subset_size,
+            num_iterations=self.num_iterations,
+            destroy_method_name=self.destroy_method_name,
+            low_level_solver_name=self.low_level_solver_name,
+            random_seed=random_seed
         )
-        low_level_solver.run()
-        new_num_collisions = path_table.num_collisions(instance.num_agents)
 
-        return new_num_collisions, path_table, instance
+    def run_iteration(self, do_seed = False):
+        with self.executor(max_workers=self.parallelism) as executor:
+            solvers = [
+                self.get_solver(
+                    do_copy=self.executor_name == "thread",
+                    random_seed=i if do_seed else None
+                )
+                for i in range(self.parallelism)
+            ]
 
-    def __del__(self):
-        self.executor.shutdown(wait=True, cancel_futures=True)
+            futures = [
+                executor.submit(solver.run, early_stopping=True)
+                for solver in solvers
+            ]
 
-    def run_iteration(self):
-        subsets_flat = self.destroy_heuristic.generate_subset()
-        subsets_path_ids = [int(self.instance.agents[agent_id].path_id) for agent_id in subsets_flat]
+            for future in as_completed(futures):
+                first, iterations = future.result()
 
-        # evaluate each subset in parallel
-        subsets = [
-            subsets_flat[i : i + self.subset_size]
-            for i in range(0, len(subsets_flat), self.subset_size)
-        ]
+                if first.num_collisions < self.num_collisions:
+                    self.instance = first.instance
+                    self.path_table = first.path_table
+                    self.num_collisions = first.num_collisions
+                    break
 
-        if self.verbose:
-            print(subsets)
-            print(subsets_path_ids)
-            print(f'\n**** Initial number of collisions: {self.num_collisions} ****')
-
-        futures = [
-            self.executor.submit(
-                self.evaluate_subset,
-                # if we are using a ProcessPoolExecutor
-                # arguments will be auto-copied, otherwise we use copy.deepcopy
-                self.instance if self.executor_name == "process" else copy.deepcopy(self.instance),
-                self.path_table if self.executor_name == "process" else copy.deepcopy(self.path_table),
-                self.low_level_solver,
-                subset,
-            )
-            for subset in subsets
-        ]
-
-        results = [future.result() for future in futures]
-
-        new_num_collisions, new_path_table, new_instance = min(results, key=lambda x: x[0])
-        if new_num_collisions < self.num_collisions:
-            self.num_collisions = new_num_collisions
-            self.path_table = new_path_table
-            self.instance = new_instance
-
-            if self.verbose:
-                print(f'**** Iteration successful! ****')
-                print(f'        New path ids: {[int(self.instance.agents[agent_id].path_id) for agent_id in subsets_flat]} ****')
-                print(f'        New collision count: {self.num_collisions} ****\n')
-        else:
-            if self.verbose:
-                print(f'**** Iteration failed! \n****')
+            for future in futures:
+                if not future.done():
+                    future.cancel()
 
         self.collision_statistics += [self.num_collisions]
+
+        return iterations
 
     def run(self):
         for iteration in range(self.num_iterations):

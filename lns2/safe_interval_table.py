@@ -23,6 +23,8 @@ class SafeIntervalTable:
     def is_safe(self, neighbor, next_time):
         return self.mapping[neighbor].at(next_time)
 
+    def __getitem__(self, item):
+        return sorted(self.mapping[item])[0]
 
 
 

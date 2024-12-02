@@ -1,9 +1,34 @@
+import copy
 from heapq import heappush, heappop
 from typing import Tuple, List
 import random
 import networkx as nx
+
+from lns2.node import Node
 from lns2.random_neighborhood_picker import RandomNeighborhoodPicker
 from lns2.safe_interval_table import SafeIntervalTable
+
+
+def inset_node(n: Node, open_list: list[Node], closed_list: list[Node]):
+    # we assume c f g h values are computed for n
+    open_and_closed = open_list + closed_list
+    N = {q for q in open_and_closed if q.vertex == n.vertex and q.id == n.id and q.is_goal == n.is_goal}
+    for q in N:
+        if q.safe_interval.begin <= n.safe_interval.begin and q.c <= n.c:
+            return
+        elif n.safe_interval.begin <= q.safe_interval.begin and n.c <= q.c:
+            open_list.remove(q)
+            closed_list.remove(q)
+        elif n.safe_interval.begin < q.safe_interval.end and q.safe_interval.begin < n.safe_interval.end:
+            if n.safe_interval.begin < q.safe_interval.begin:
+                n.safe_interval =
+
+
+            open_list.remove(q)
+            closed_list.remove(q)
+            heappush(open_list, n)
+            return
+
 
 
 class LNS2:
@@ -11,8 +36,7 @@ class LNS2:
     NEIGHBORHOOD_SIZE = 10
 
     def __init__(self, graph: nx.Graph, agent_start_goal_list: Tuple[int, int, int],
-                 hard_obstacles: List[Tuple[int, int]],
-                 soft_obstacles: Tuple[int, int]):
+                 hard_obstacles: List[Tuple[int, int]]):
         """
         Initialize the LNS solver.
         :param graph: The graph on which the agents are moving.
@@ -27,7 +51,6 @@ class LNS2:
         self.graph = graph
         self.agent_start_goal_list = agent_start_goal_list
         self.hard_obstacles = hard_obstacles
-        self.soft_obstacles = soft_obstacles
         self.neighborhood_picker = RandomNeighborhoodPicker(self.NEIGHBORHOOD_SIZE)
 
         # Starting the algorithm
@@ -49,12 +72,13 @@ class LNS2:
     def shortest_solution(self, start, goal):
         """
         Find the shortest path from start to goal avoiding hard obstacles.
+        This is basically an A* implementation.
+        Unfortunately, we can't just run NetworkX shortest path algorithm
+        because we need to avoid hard obstacles.
         :param start: The starting vertex.
         :param goal: The goal vertex.
         :return: A list of vertices representing the shortest path.
         """
-        def heuristic(v1, v2):
-            return nx.shortest_path_length(self.graph, v1, v2)
 
         open_set = []
         heappush(open_set, (0, start, 0, []))  # (priority, current_vertex, time, path)
@@ -78,7 +102,7 @@ class LNS2:
                 if (neighbor, next_time) in self.hard_obstacles:
                     continue  # Skip hard obstacles
                 if (neighbor, next_time) not in visited:
-                    cost = len(new_path) + heuristic(neighbor, goal)
+                    cost = len(new_path) + self.heuristic(neighbor, goal)
                     heappush(open_set, (cost, neighbor, next_time, new_path))
 
         # Return an empty list if no path is found
@@ -94,58 +118,52 @@ class LNS2:
         """
         new_solution = dict(solution)  # Start with the existing solution
         # Existing paths are used as soft obstacles
-        existing_paths = {agent_id: solution[agent_id] for agent_id in solution}
         # For each agent in the neighborhood, we replan their path using sipp
         for agent_id in neighborhood:
+            existing_paths = {agent_id: solution[agent_id] for agent_id in solution}
+            soft_obstacles: set[Tuple[int, int]] = {(v,t) for _agent_id, path in existing_paths.items() for t,v in enumerate(path)}
             _, start, goal = self.agent_start_goal_list[agent_id]
-            new_solution[agent_id] = self.sipp_pathfinding(start, goal, existing_paths)
+            new_solution[agent_id] = self.sipp_pathfinding(start, goal, existing_paths, soft_obstacles)
 
         return new_solution
 
-    def sipp_pathfinding(self, start, goal, existing_paths):
+    def sipp_pathfinding(self, start, goal, existing_paths, soft_obstacles):
         """
         Perform SIPP for an agent from start to goal.
+        This is a by-the-book implementation as shown in the paper MAPF-LNS2.
         :param start: Starting vertex for the agent.
         :param goal: Goal vertex for the agent.
         :param existing_paths: A dictionary of existing paths of all agents to avoid soft obstacles.
         :return: A list of vertices representing the shortest path found using SIPP.
         """
-        open_list = []
-        heappush(open_list, (0, start, 0, []))  # (cost, current_vertex, current_time, path)
-        visited = set()
-        safe_intervals = SafeIntervalTable(self.graph.nodes, existing_paths, self.hard_obstacles)
 
+        safe_intervals: SafeIntervalTable = SafeIntervalTable(self.graph.nodes, existing_paths, self.hard_obstacles)
+        root: Node = Node(vertex=start, safe_interval=safe_intervals[start][0], id=1, is_goal=False,
+                    g=0,
+                    h=self.heuristic(start, goal),
+                    f=self.heuristic(start, goal) + 0,
+                    c=0, path=[start])
+        T: int = 0
+        if goal in [v_t[0] for v_t in self.hard_obstacles]:
+            T = max([v_t[1] for v_t in self.hard_obstacles if v_t[0] == goal])
+        open_list: list[Node] = []
+        closed_list: list[Node] = []
+        heappush(open_list, root)
         while open_list:
-            cost, current_vertex, current_time, path = heappop(open_list)
+            n: Node = heappop(open_list)
+            if n.is_goal:
+                return n.path
+            if n.vertex == goal and n.safe_interval.begin >= T:
+                c_future = len([(g, t) for g, t in soft_obstacles if t > T])
+                if c_future == 0:
+                    return n.path
+                n_tag: Node = copy.deepcopy(n),
+                n_tag.is_goal = True
+                n_tag.c = n_tag.c + c_future
+                inset_node(n_tag, open_list, closed_list)
+            expand_node()
+            heappush(closed_list, n)
+        return None
 
-            if (current_vertex, current_time) in visited:
-                continue
-            visited.add((current_vertex, current_time))
-
-            new_path = path + [current_vertex]
-
-            # If the goal is reached, return the path
-            if current_vertex == goal:
-                return new_path
-
-            # Explore neighbors
-            for neighbor in self.graph.neighbors(current_vertex):
-                next_time = current_time + 1
-                # Check for hard obstacles and avoid them
-                if (neighbor, next_time) in self.hard_obstacles:
-                    continue
-                # Check for safe intervals (avoid soft obstacles if possible)
-                if not safe_intervals.is_safe(neighbor, next_time):
-                    continue
-                # Heuristic cost based on shortest path length
-                heuristic_cost = nx.shortest_path_length(self.graph, neighbor, goal)
-                new_cost = cost + 1 + heuristic_cost  # The cost is updated by 1 step and heuristic
-
-                heappush(open_list, (new_cost, neighbor, next_time, new_path))
-
-        return []  # Return empty if no path is found
-
-
-
-
-
+    def heuristic(self, v1, v2):
+        return nx.shortest_path_length(self.graph, v1, v2)

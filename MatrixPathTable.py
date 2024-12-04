@@ -145,7 +145,7 @@ class MatrixPathTable:
         return self.get_collisions_matrix().sum() // 2
 
     # @benchmark(n=10_000)
-    # get_collisions_matrix executed in 0.000460 seconds
+    # get_collisions_matrix rolling mean execution time: 73.861977 μs (over 8249 runs)
     def get_collisions_matrix(self, additional_paths: np.array = None) -> np.array:
         # NOTE: we don't care about agent order, since idx are strictly increasing
         # the returned matrix will be sorted by agent_id

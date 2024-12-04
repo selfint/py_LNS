@@ -1,9 +1,8 @@
-import copy
-
 from instance import instance
 from MatrixPathTable import MatrixPathTable
 import numpy as np
 import itertools
+from benchmark_utils import benchmark
 
 
 class NeighborhoodRepair:
@@ -32,24 +31,18 @@ class NeighborhoodRepair:
 
 
 class PPNeighborhoodRepair(NeighborhoodRepair):
+    # reroute_agent rolling mean execution time: 41.597524 μs (over 10000 runs)
+    # @benchmark(n=10_000)
     def reroute_agent(self, agent_id):
         if self.verbose:
             print(f"\n**** Rerouting agent {agent_id} ****")
 
-        best_path_id = 0
-        best_path_cols = np.inf
-
-        for path_id in range(len(self.instance.agents[agent_id].paths)):
-            path_cols = self.path_table.count_collisions_points_along_path(
-                agent_id, path_id
-            )
-
-            if path_cols < best_path_cols:
-                best_path_id = path_id
-                best_path_cols = path_cols
-
-            if best_path_cols == 0:
-                break
+        n_paths = self.instance.agents[agent_id].n_paths
+        paths = np.arange(n_paths) + agent_id * n_paths
+        cols = self.path_table.count_collisions_points_along_path_idx(paths)
+        
+        best_path_id = np.argmin(cols)
+        best_path_cols = cols[best_path_id]
 
         if self.verbose:
             print(f"\n       New number of collisions: {best_path_cols} ****")

@@ -8,16 +8,7 @@ import time
 import scipy
 from PathTable import iter_path, iter_edges, iter_vertices, Vertex, Edge
 
-
-def benchmark(func):
-    def wrapper(*args, **kwargs):
-        start_time = time.perf_counter()
-        result = func(*args, **kwargs)
-        end_time = time.perf_counter()
-        print(f"{func.__name__} executed in {end_time - start_time:.6f} seconds")
-        return result
-
-    return wrapper
+from benchmark_utils import benchmark
 
 
 class MatrixPathTable:
@@ -131,14 +122,19 @@ class MatrixPathTable:
 
         return True
 
-    # @benchmark
-    # count_collisions_points_along_path executed in 0.000024 seconds
+    # @benchmark(n=10_000)
+    # count_collisions_points_along_path rolling mean execution time: 26.748797 μs (over 10000 runs)
     def count_collisions_points_along_path(self, agent_id: int, path_id: int) -> int:
         idx = self._get_idx(agent_id, path_id)
 
         result = (self.path_collisions[idx] * self.current_idx).sum()
 
         return result
+
+    # @benchmark(n=10_000)
+    # count_collisions_points_along_path_idx rolling mean execution time: 36.098405 μs (over 10000 runs)
+    def count_collisions_points_along_path_idx(self, idx: npt.NDArray) -> npt.NDArray:
+        return self.path_collisions[idx] * self.current_idx
 
     def count_collisions_points_along_existing_path(
         self, agent_id: int, path_id: int
@@ -148,7 +144,7 @@ class MatrixPathTable:
     def num_collisions(self):
         return self.get_collisions_matrix().sum() // 2
 
-    # @benchmark
+    # @benchmark(n=10_000)
     # get_collisions_matrix executed in 0.000460 seconds
     def get_collisions_matrix(self, additional_paths: np.array = None) -> np.array:
         # NOTE: we don't care about agent order, since idx are strictly increasing

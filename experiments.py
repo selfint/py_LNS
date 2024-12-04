@@ -266,6 +266,117 @@ def optimistic_iteration_exp(
     return inst, table, results
 
 
+def matrix_solver_test_exp(
+    map_path, agent_path, n_paths, test_iterations, temp, verbose
+):
+    from MatrixPathTable import MatrixPathTable
+    import matrix_solvers
+    import copy
+    import time
+
+    def format_cmatrix_for_diff(cm: list[list[int]]) -> str:
+        return "\n".join(" ".join(f"{int(x):3}" for x in row) for row in cm)
+
+    test_iterations = 1000
+
+    subset_size = 20
+
+    inst = instance.instance(
+        map_path,
+        agent_path,
+        n_paths=n_paths,
+        instance_name="Parallel solver experiment",
+        agent_path_temp=temp,
+        verbose=verbose,
+    )
+
+    table = PathTable(
+        inst.num_of_rows,
+        inst.num_of_cols,
+        inst.num_agents,
+    )
+
+    m_inst = copy.deepcopy(inst)
+    m_table = MatrixPathTable(
+        agents = list(sorted(m_inst.agents.values(), key=lambda a: a.id))
+    )
+
+    np.random.seed(42)
+
+    solvers.random_initial_solution(inst, table)
+    for agent in inst.agents.values():
+        m_table.insert_path(agent.id, agent.path_id)
+        m_inst.agents[agent.id].path_id = agent.path_id
+
+    for agent, m_agent in zip(inst.agents.values(), m_inst.agents.values()):
+        assert (agent.id, agent.path_id) == (m_agent.id, m_agent.path_id)
+        np.testing.assert_equal(
+            agent.paths[agent.path_id], m_agent.paths[m_agent.path_id]
+        )
+
+    solver = solvers.IterativeRandomLNS(
+        inst,
+        table,
+        subset_size=subset_size,
+        num_iterations=0,
+        destroy_method_name="priority",
+        low_level_solver_name="pp",
+    )
+
+    m_solver = matrix_solvers.MatrixIterativeRandomLNS(
+        m_inst,
+        m_table,
+        subset_size=subset_size,
+        num_iterations=0,
+        destroy_method_name="priority",
+        low_level_solver_name="pp",
+        verbose=True
+    )
+
+    assert solver.num_collisions == m_solver.num_collisions, (
+        "Invalid initial collisions",
+        solver.num_collisions,
+        m_solver.num_collisions,
+    )
+
+    durations = []
+    m_durations = []
+    for iteration in tqdm.tqdm(range(test_iterations)):
+        random_state = np.random.get_state()
+
+        start = time.time()
+        solver.run_iteration()
+        duration_ms = (time.time() - start) * 1000
+
+        np.random.set_state(random_state)
+        start = time.time()
+        m_solver.run_iteration()
+        m_duration_ms = ((time.time() - start) * 1000)
+
+        durations.append(duration_ms)
+        m_durations.append(m_duration_ms)
+
+        assert solver.num_collisions == m_solver.num_collisions, (
+            solver.num_collisions, m_solver.num_collisions
+        )
+
+        for agent, m_agent in zip(inst.agents.values(), m_inst.agents.values()):
+            value = (m_agent.id, m_agent.path_id)
+            expected = (agent.id, agent.path_id)
+            assert value == expected, (value, expected)
+            np.testing.assert_equal(
+                agent.paths[agent.path_id], m_agent.paths[m_agent.path_id]
+            )
+
+        cmatrix = solver.path_table.get_collisions_matrix(inst.num_agents)
+        m_cmatrix = m_solver.path_table.get_collisions_matrix()
+
+        cmatrix = format_cmatrix_for_diff(cmatrix)
+        m_cmatrix = format_cmatrix_for_diff(m_cmatrix)
+
+        assert cmatrix == m_cmatrix
+
+
 def parallel_solver_test_exp(
     map_path, agent_path, n_paths, test_iterations, temp, verbose, executor_name
 ):

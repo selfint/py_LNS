@@ -1,3 +1,4 @@
+import random
 from typing import List
 
 from lns2.neighborhood_picker import NeighborhoodPicker
@@ -9,4 +10,4 @@ class RandomNeighborhoodPicker(NeighborhoodPicker):
 
     def pick(self, paths: dict[int, List[int]]):
         assert self.n_size <= len(paths)
-        return list(paths.keys())[:self.n_size]
+        return random.sample(paths.keys(), self.n_size)

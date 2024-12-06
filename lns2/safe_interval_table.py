@@ -1,3 +1,4 @@
+import copy
 from collections import defaultdict
 from typing import List, Tuple
 from intervaltree import Interval, IntervalTree
@@ -24,8 +25,7 @@ class SafeIntervalTable:
         return self.mapping[neighbor].at(next_time)
 
     def __getitem__(self, item):
-        return sorted(self.mapping[item])[0]
-
+        return copy.deepcopy(sorted(list(self.mapping[item])))
 
 
 

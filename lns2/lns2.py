@@ -1,34 +1,11 @@
 import copy
 from heapq import heappush, heappop
 from typing import Tuple, List
-import random
 import networkx as nx
-
+from intervaltree import Interval
 from lns2.node import Node
 from lns2.random_neighborhood_picker import RandomNeighborhoodPicker
 from lns2.safe_interval_table import SafeIntervalTable
-
-
-def inset_node(n: Node, open_list: list[Node], closed_list: list[Node]):
-    # we assume c f g h values are computed for n
-    open_and_closed = open_list + closed_list
-    N = {q for q in open_and_closed if q.vertex == n.vertex and q.id == n.id and q.is_goal == n.is_goal}
-    for q in N:
-        if q.safe_interval.begin <= n.safe_interval.begin and q.c <= n.c:
-            return
-        elif n.safe_interval.begin <= q.safe_interval.begin and n.c <= q.c:
-            open_list.remove(q)
-            closed_list.remove(q)
-        elif n.safe_interval.begin < q.safe_interval.end and q.safe_interval.begin < n.safe_interval.end:
-            if n.safe_interval.begin < q.safe_interval.begin:
-                n.safe_interval =
-
-
-            open_list.remove(q)
-            closed_list.remove(q)
-            heappush(open_list, n)
-            return
-
 
 
 class LNS2:
@@ -54,13 +31,13 @@ class LNS2:
         self.neighborhood_picker = RandomNeighborhoodPicker(self.NEIGHBORHOOD_SIZE)
 
         # Starting the algorithm
-        solution = self.init_initial_solution()
+        solution = self.init_initial_solution()  # TODO change to proiritize planning
         for _ in range(self.MAX_ITERATIONS):
             neighborhood = self.neighborhood_picker.pick(solution)
             for agent_id in neighborhood:
                 del solution[agent_id]
             new_solution = self.construct_new_solution(neighborhood, solution)
-            if new_solution < solution:
+            if self.total_solution_time(new_solution) < self.total_solution_time(new_solution):
                 solution = new_solution
 
     def init_initial_solution(self):
@@ -123,11 +100,11 @@ class LNS2:
             existing_paths = {agent_id: solution[agent_id] for agent_id in solution}
             soft_obstacles: set[Tuple[int, int]] = {(v,t) for _agent_id, path in existing_paths.items() for t,v in enumerate(path)}
             _, start, goal = self.agent_start_goal_list[agent_id]
-            new_solution[agent_id] = self.sipp_pathfinding(start, goal, existing_paths, soft_obstacles)
+            new_solution[agent_id] = self.sipp_pathfinding(start, goal, existing_paths, soft_obstacles, [])
 
         return new_solution
 
-    def sipp_pathfinding(self, start, goal, existing_paths, soft_obstacles):
+    def sipp_pathfinding(self, start, goal, existing_paths, soft_obstacles, hard_obstacles):
         """
         Perform SIPP for an agent from start to goal.
         This is a by-the-book implementation as shown in the paper MAPF-LNS2.
@@ -138,7 +115,7 @@ class LNS2:
         """
 
         safe_intervals: SafeIntervalTable = SafeIntervalTable(self.graph.nodes, existing_paths, self.hard_obstacles)
-        root: Node = Node(vertex=start, safe_interval=safe_intervals[start][0], id=1, is_goal=False,
+        root: Node = Node(vertex=start, safe_interval=safe_intervals[start][0], id=0, is_goal=False,
                     g=0,
                     h=self.heuristic(start, goal),
                     f=self.heuristic(start, goal) + 0,
@@ -160,10 +137,64 @@ class LNS2:
                 n_tag: Node = copy.deepcopy(n),
                 n_tag.is_goal = True
                 n_tag.c = n_tag.c + c_future
-                inset_node(n_tag, open_list, closed_list)
-            expand_node()
+                self.insert_node(n_tag, open_list, closed_list)
+            self.expand_node(n, open_list, closed_list, safe_intervals, soft_obstacles, hard_obstacles, goal)
             heappush(closed_list, n)
         return None
 
     def heuristic(self, v1, v2):
         return nx.shortest_path_length(self.graph, v1, v2)
+    
+    @staticmethod
+    def total_solution_time(new_solution: dict[int, List[int]]):
+        """
+        Count the number of collisions in new_solution.
+        new_solution is a dict of agent, list of vertices representing the path.
+        We return the number of agents who are in the same place at the same time stamp
+        Args
+            new_solution:
+
+        Returns:
+        """
+        return sum([len(path) for path in new_solution.values()])
+
+    def insert_node(self, n: Node, open_list: list[Node], closed_list: list[Node]):
+        # we assume c f g h values are computed for n
+        open_and_closed = open_list + closed_list
+        N = {q for q in open_and_closed if q.vertex == n.vertex and q.id == n.id and q.is_goal == n.is_goal}
+        for q in N:
+            if q.safe_interval.begin <= n.safe_interval.begin and q.c <= n.c:
+                return
+            elif n.safe_interval.begin <= q.safe_interval.begin and n.c <= q.c:
+                open_list.remove(q)
+                closed_list.remove(q)
+            elif n.safe_interval.begin < q.safe_interval.end and q.safe_interval.begin < n.safe_interval.end:
+                if n.safe_interval.begin < q.safe_interval.begin:
+                    n.safe_interval = Interval(n.safe_interval.begin, q.safe_interval.begin, "safe")
+                else:
+                    q.safe_interval = Interval(q.safe_interval.begin, n.safe_interval.begin, "safe")
+        heappush(open_list, n)
+        return
+
+    def expand_node(self, n: Node, open_list: list[Node], closed_list: list[Node], safe_intervals: SafeIntervalTable, soft_obstacles: set[Tuple[int, int]], hard_obstacles: set[Tuple[int, int]], goal):
+        I: list[(int, int)] = []
+        for neighbor in self.graph.neighbors(n.vertex):
+            I.extend([(neighbor, id_interval) for id_interval in range(len(safe_intervals[neighbor]))
+                      if safe_intervals[neighbor][id_interval].overlaps(Interval(n.safe_interval.begin + 1, n.safe_interval.end + 1))])
+
+        for id_interval in range(len(safe_intervals[n.vertex])):
+            if safe_intervals[n.vertex][id_interval].begin == n.safe_interval.end:
+                I.append((n.vertex, id_interval))
+                break  # ??
+        for (v, id_interval) in I:
+            low, high = safe_intervals[v][id_interval].begin, safe_intervals[v][id_interval].end
+            # For now  we don't consider edge collisions
+            n3_g_val = low
+            n3_c_val = n.c + (1 if (v, low) in soft_obstacles else 0)  # v is his own parent
+            n3 = Node(vertex=v, safe_interval=Interval(low, high, "safe"), id=id_interval, is_goal=False,
+                      g=n3_g_val, h=self.heuristic(v, goal), f=n.g + 1 + self.heuristic(v, goal),
+                      c=n3_c_val, path=n.path + [v])
+
+            self.insert_node(n3, open_list, closed_list)
+
+    

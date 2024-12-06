@@ -665,3 +665,110 @@ def parallelism_ablation_exp(
             f.write("duration,collisions\n")
             for duration, collision in zip(durations, collisions):
                 f.write(f"{duration},{collision}\n")
+
+def stateless_solver_test_exp(
+    map_path, agent_path, n_paths, test_iterations, temp, verbose
+):
+    import parallel_lns
+    import time
+
+    test_iterations = 1000
+
+    subset_size = 20
+
+    inst = instance.instance(
+        map_path,
+        agent_path,
+        n_paths=n_paths,
+        instance_name="Parallel solver experiment",
+        agent_path_temp=temp,
+        verbose=verbose,
+    )
+
+    table = PathTable(
+        inst.num_of_rows,
+        inst.num_of_cols,
+        inst.num_agents,
+    )
+
+    np.random.seed(42)
+
+    solvers.random_initial_solution(inst, table)
+
+    n_agents = inst.num_agents
+    p_solution = np.zeros((n_agents, n_paths), dtype=np.int8)
+    for agent in inst.agents.values():
+        p_solution[agent.id - 1][agent.path_id] = 1
+
+    p_cmatrix = parallel_lns.build_cmatrix(list(inst.agents.values()))
+
+    for agent, m_agent in zip(sorted(inst.agents.values(), key=lambda a: a.id), p_solution):
+        assert agent.path_id == np.where(m_agent > 0)[0]
+
+    solver = solvers.IterativeRandomLNS(
+        inst,
+        table,
+        subset_size=subset_size,
+        num_iterations=0,
+        destroy_method_name="priority",
+        low_level_solver_name="pp",
+    )
+
+    p_collisions = parallel_lns.solution_cmatrix(p_cmatrix, p_solution)
+    p_num_collisions = (p_collisions.sum() // 2).item()
+
+    assert solver.num_collisions == p_num_collisions, (
+        "Invalid initial collisions",
+        solver.num_collisions,
+        p_num_collisions,
+    )
+
+    durations = []
+    p_durations = []
+    for iteration in tqdm.tqdm(range(test_iterations)):
+        random_state = np.random.get_state()
+
+        start = time.time()
+        solver.run_iteration()
+        duration_ms = (time.time() - start) * 1000
+
+        np.random.set_state(random_state)
+        start = time.time()
+        p_solution, p_num_collisions = parallel_lns.run_iteration(
+            p_cmatrix,
+            n_agents,
+            n_paths,
+            p_solution,
+            p_num_collisions,
+            destroy_method=parallel_lns.priority_destroy_method,
+            repair_method=parallel_lns.pp_repair_method,
+            neighborhood_size=subset_size,
+        )
+        p_duration_ms = ((time.time() - start) * 1000)
+
+        durations.append(duration_ms)
+        p_durations.append(p_duration_ms)
+
+        cmatrix = solver.path_table.get_collisions_matrix(inst.num_agents)
+        p_collisions = parallel_lns.solution_cmatrix(p_cmatrix, p_solution).toarray()
+                
+        for agent, m_agent in zip(sorted(inst.agents.values(), key=lambda a: a.id), p_solution):
+            p_path_id = np.where(m_agent > 0)[0]
+            if agent.path_id != p_path_id:
+                print(agent.id - 1, agent.path_id, p_path_id)
+                assert False
+
+        assert solver.num_collisions == p_num_collisions, (
+            "Invalid initial collisions",
+            solver.num_collisions,
+            p_num_collisions,
+        )
+
+        if not np.array_equal(cmatrix[1:, 1:], p_collisions):
+            for agent_id, (row, p_row) in enumerate(zip(cmatrix[1:, 1:], p_collisions)):
+                if not np.array_equal(row, p_row):
+                    row = np.where(row > 0)[0]
+                    p_row = np.where(p_row > 0)[0]
+                    print(agent_id, row, p_row)
+
+            assert False

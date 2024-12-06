@@ -102,18 +102,6 @@ def solution_cmatrix(cmatrix: CMatrix, solution: Solution) -> CMatrix:
     return cmatrix[np.ix_(solution_idx, solution_idx)]
 
 
-def argmax_destroy_method(
-    cmatrix: CMatrix, solution: Solution, n_paths: int, size: int
-) -> Neighborhood:
-    sol_cmatrix = solution_cmatrix(cmatrix, solution)
-
-    cols = sol_cmatrix.sum(axis=0)
-    argmax_indices = np.argpartition(cols, -size)[-size:]
-    argmax_ids = (argmax_indices + 1).tolist()
-
-    return argmax_ids
-
-
 def priority_destroy_method(
     cmatrix: CMatrix, solution: Solution, n_paths: int, size: int
 ) -> Neighborhood:

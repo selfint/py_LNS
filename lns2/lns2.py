@@ -12,8 +12,8 @@ class LNS2:
     MAX_ITERATIONS = 1000
     NEIGHBORHOOD_SIZE = 10
 
-    def __init__(self, graph: nx.Graph, agent_start_goal_list: Tuple[int, int, int],
-                 hard_obstacles: List[Tuple[int, int]]):
+    def __init__(self, graph: nx.Graph, agent_start_goal_list: tuple[int, int, int],
+                 hard_obstacles: list[tuple[int, int]]):
         """
         Initialize the LNS solver.
         :param graph: The graph on which the agents are moving.
@@ -85,7 +85,7 @@ class LNS2:
         # Return an empty list if no path is found
         return []
 
-    def construct_new_solution(self, neighborhood: List[int], solution: dict[int, List[int]]):
+    def construct_new_solution(self, neighborhood: list[int], solution: dict[int, list[int]]):
         """
         Constructs a new solution for the agents in the given neighborhood
         by replanning their paths using SIPP while avoiding collisions.
@@ -98,22 +98,25 @@ class LNS2:
         # For each agent in the neighborhood, we replan their path using sipp
         for agent_id in neighborhood:
             existing_paths = {agent_id: solution[agent_id] for agent_id in solution}
-            soft_obstacles: set[Tuple[int, int]] = {(v,t) for _agent_id, path in existing_paths.items() for t,v in enumerate(path)}
+            soft_obstacles: list[Tuple[int, int]] = [(v, t) for _agent_id, path in existing_paths.items() for t,v in enumerate(path)]
             _, start, goal = self.agent_start_goal_list[agent_id]
             new_solution[agent_id] = self.sipp_pathfinding(start, goal, existing_paths, soft_obstacles, [])
 
         return new_solution
 
-    def sipp_pathfinding(self, start, goal, existing_paths, soft_obstacles, hard_obstacles):
+    def sipp_pathfinding(self, start, goal, existing_paths, soft_obstacles: list[tuple[int, int]], hard_obstacles: list[tuple[int, int]]):
         """
         Perform SIPP for an agent from start to goal.
         This is a by-the-book implementation as shown in the paper MAPF-LNS2.
         :param start: Starting vertex for the agent.
         :param goal: Goal vertex for the agent.
         :param existing_paths: A dictionary of existing paths of all agents to avoid soft obstacles.
+        :param soft_obstacles: A list of tuples of soft obstacles in the format of (vertex, timestamp)
+        meaning there is a soft obstacle in `vertex` at `timestamp`.
+        :param hard_obstacles: A list of tuples of hard obstacles in the format of (vertex, timestamp)
+        meaning there is a hard obstacle in `vertex` at `timestamp`.
         :return: A list of vertices representing the shortest path found using SIPP.
         """
-
         safe_intervals: SafeIntervalTable = SafeIntervalTable(self.graph.nodes, existing_paths, self.hard_obstacles)
         root: Node = Node(vertex=start, safe_interval=safe_intervals[start][0], id=0, is_goal=False,
                     g=0,
@@ -176,7 +179,7 @@ class LNS2:
         heappush(open_list, n)
         return
 
-    def expand_node(self, n: Node, open_list: list[Node], closed_list: list[Node], safe_intervals: SafeIntervalTable, soft_obstacles: set[Tuple[int, int]], hard_obstacles: set[Tuple[int, int]], goal):
+    def expand_node(self, n: Node, open_list: list[Node], closed_list: list[Node], safe_intervals: SafeIntervalTable, soft_obstacles: list[tuple[int, int]], hard_obstacles: list[tuple[int, int]], goal):
         I: list[(int, int)] = []
         for neighbor in self.graph.neighbors(n.vertex):
             I.extend([(neighbor, id_interval) for id_interval in range(len(safe_intervals[neighbor]))
@@ -188,7 +191,7 @@ class LNS2:
                 break  # ??
         for (v, id_interval) in I:
             low, high = safe_intervals[v][id_interval].begin, safe_intervals[v][id_interval].end
-            # For now  we don't consider edge collisions
+            # For now, we don't consider edge collisions
             n3_g_val = low
             n3_c_val = n.c + (1 if (v, low) in soft_obstacles else 0)  # v is his own parent
             n3 = Node(vertex=v, safe_interval=Interval(low, high, "safe"), id=id_interval, is_goal=False,

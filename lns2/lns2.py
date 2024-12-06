@@ -3,6 +3,8 @@ from heapq import heappush, heappop
 from typing import Tuple, List
 import networkx as nx
 from intervaltree import Interval
+
+from lns2.adaptive_lns_neighborhood_picker import AdaptiveLNSNeighborhoodPicker
 from lns2.node import Node
 from lns2.random_neighborhood_picker import RandomNeighborhoodPicker
 from lns2.safe_interval_table import SafeIntervalTable
@@ -28,7 +30,7 @@ class LNS2:
         self.graph = graph
         self.agent_start_goal_list = agent_start_goal_list
         self.hard_obstacles = hard_obstacles
-        self.neighborhood_picker = RandomNeighborhoodPicker(self.NEIGHBORHOOD_SIZE)
+        self.neighborhood_picker: AdaptiveLNSNeighborhoodPicker = AdaptiveLNSNeighborhoodPicker(self.NEIGHBORHOOD_SIZE, gamma=0.1)
 
         # Starting the algorithm
         solution = self.init_initial_solution()  # TODO change to proiritize planning
@@ -37,7 +39,8 @@ class LNS2:
             for agent_id in neighborhood:
                 del solution[agent_id]
             new_solution = self.construct_new_solution(neighborhood, solution)
-            if self.total_solution_time(new_solution) < self.total_solution_time(new_solution):
+            self.neighborhood_picker.update(self.num_of_colliding_pairs(solution) - self.num_of_colliding_pairs(new_solution)
+            if self.num_of_colliding_pairs(new_solution) < self.num_of_colliding_pairs(new_solution):
                 solution = new_solution
 
     def init_initial_solution(self):
@@ -149,17 +152,25 @@ class LNS2:
         return nx.shortest_path_length(self.graph, v1, v2)
     
     @staticmethod
-    def total_solution_time(new_solution: dict[int, List[int]]):
+    def num_of_colliding_pairs(solution: dict[int, list[int]]) -> int:
         """
         Count the number of collisions in new_solution.
         new_solution is a dict of agent, list of vertices representing the path.
-        We return the number of agents who are in the same place at the same time stamp
+        We return the number of colliding pairs of agents
         Args
-            new_solution:
-
+            new_solution: dict[int, List[int]]: A dictionary of agent_id and their path.
         Returns:
         """
-        return sum([len(path) for path in new_solution.values()])
+        collisions = 0
+        for agent_id, path in solution.items():
+            for agent_id2, path2 in solution.items():
+                if agent_id == agent_id2:
+                    continue
+                for i in range(min(len(path), len(path2))):
+                    if path[i] == path2[i]:
+                        collisions += 1
+                        break
+        return collisions / 2
 
     def insert_node(self, n: Node, open_list: list[Node], closed_list: list[Node]):
         # we assume c f g h values are computed for n
@@ -177,7 +188,6 @@ class LNS2:
                 else:
                     q.safe_interval = Interval(q.safe_interval.begin, n.safe_interval.begin, "safe")
         heappush(open_list, n)
-        return
 
     def expand_node(self, n: Node, open_list: list[Node], closed_list: list[Node], safe_intervals: SafeIntervalTable, soft_obstacles: list[tuple[int, int]], hard_obstacles: list[tuple[int, int]], goal):
         I: list[(int, int)] = []
@@ -200,4 +210,3 @@ class LNS2:
 
             self.insert_node(n3, open_list, closed_list)
 
-    

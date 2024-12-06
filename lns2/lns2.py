@@ -31,7 +31,8 @@ class LNS2:
         self.neighborhood_picker: AdaptiveLNSNeighborhoodPicker = AdaptiveLNSNeighborhoodPicker(self.NEIGHBORHOOD_SIZE, gamma=0.1)
 
         # Starting the algorithm
-        solution = self.init_initial_solution()  # TODO change to prioritize planning
+        solution = self.init_initial_solution()  # TODO change to prioritize planning? where in the article
+                                                #  they say what to do?
         for _ in range(self.MAX_ITERATIONS):
             neighborhood = self.neighborhood_picker.pick(solution)
             for agent_id in neighborhood:

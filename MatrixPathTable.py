@@ -30,9 +30,6 @@ class MatrixPathTable:
     path_collisions: scipy.sparse.csr_matrix
     """Sparse matrix representing collisions between path idx"""
 
-    current_paths: set[tuple[int, int]]
-    """Set of current (agent_id, path_id) in use"""
-
     current_idx: npt.NDArray
     """Indicator vector for current path_idx in use"""
 
@@ -48,8 +45,6 @@ class MatrixPathTable:
             for agent in agents
             for path_id, path in enumerate(agent.paths)
         ]
-
-        self.current_paths = set()
 
         size = self.n_agents * self.n_paths
         self.current_idx = np.zeros(size, dtype=np.int8)
@@ -103,17 +98,12 @@ class MatrixPathTable:
         return idx // self.n_paths, idx % self.n_paths
 
     def insert_path(self, agent_id: int, path_id: int) -> None:
-        self.current_paths.add((agent_id, path_id))
         self.current_idx[self._get_idx(agent_id, path_id)] = 1
 
     def remove_path(self, agent_id: int, path_id: int) -> None:
-        self.current_paths.remove((agent_id, path_id))
         self.current_idx[self._get_idx(agent_id, path_id)] = 0
 
     def is_path_available(self, agent_id: int, path_id: int) -> bool:
-        if (agent_id, path_id) in self.current_paths:
-            return False
-
         other_idx = self._get_idx(agent_id, path_id)
         for current_agent_id, current_path_id in self.current_paths:
             current_idx = self._get_idx(current_agent_id, current_path_id)
@@ -174,24 +164,9 @@ class MatrixPathTable:
 
     def get_agent_collisions_for_paths(self, agent: Agent.Agent) -> npt.NDArray:
         start = time.time()
-        n_paths = agent.n_paths
-        matrix = np.zeros((n_paths, self.n_agents + 1))
-        for path_index, path in enumerate(agent.paths):
-            idx = self._get_idx(agent_id=agent.id, path_id=path_index)
-
-            for current_agent_id, current_path_id in self.current_paths:
-                current_idx = self._get_idx(current_agent_id, current_path_id)
-                if current_idx == idx:
-                    continue
-
-                row = self.path_collisions[current_idx]
-                one_hot = np.zeros(row.shape, dtype=np.int8)
-                one_hot[0][idx] = 1
-
-                if (row @ one_hot.T).squeeze().item() == 1:
-                    matrix[path_index][current_agent_id] = 1
-
-        result = matrix.sum(axis=1).astype(int).tolist()
+        n_paths = self.n_paths
+        path_idx = np.arange(n_paths) + agent.id * n_paths
+        result = self.count_collisions_points_along_path_idx(path_idx)
 
         print(f"get_agent_collisions_for_paths Time taken: {time.time() - start}")
         return result

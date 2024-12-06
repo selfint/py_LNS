@@ -199,18 +199,29 @@ class LNS2:
             I.extend([(neighbor, id_interval) for id_interval in range(len(safe_intervals[neighbor]))
                       if safe_intervals[neighbor][id_interval].overlaps(Interval(n.safe_interval.begin + 1, n.safe_interval.end + 1))])
 
+        i = 0 # Testing that the if statement runs at most once
         for id_interval in range(len(safe_intervals[n.vertex])):
             if safe_intervals[n.vertex][id_interval].begin == n.safe_interval.end:
                 I.append((n.vertex, id_interval))
-                break  # ??
+                i += 1
+        assert i <= 1 # The if statement runs at most once
+
         for (v, id_interval) in I:
             low, high = safe_intervals[v][id_interval].begin, safe_intervals[v][id_interval].end
-            # For now, we don't consider edge collisions
+            # edge_collisions_times: list[int] = self.find_edge_collisions(n, v, soft_obstacles) #TODO deal with edge collisions
             n3_g_val = low
-            n3_c_val = n.c + (1 if (v, low) in soft_obstacles else 0)  # v is his own parent
+            n3_c_val = n.c + (1 if (v, low) in soft_obstacles else 0)
             n3 = Node(vertex=v, safe_interval=Interval(low, high, "safe"), id=id_interval, is_goal=False,
                       g=n3_g_val, h=self.heuristic(v, goal), f=n.g + 1 + self.heuristic(v, goal),
                       c=n3_c_val, path=n.path + [v])
 
             self.insert_node(n3, open_list, closed_list)
+
+    def find_edge_collisions(self, n, v, obstacles):
+        # for i, (obstacle, time) in enumerate(obstacles):
+        #     if obstacle == v and obstacles[i+1][0] == :
+        pass #TODO how do i know to detect an edge collision? I don't know if the obstacle "is going" fron v to n
+        # or its just that there is another obstacle at v at the same time as n
+
+
 

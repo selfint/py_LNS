@@ -76,7 +76,7 @@ def build_cmatrix(agents: list[Agent]) -> CMatrix:
                     edges[edge.reverse()].add((agent_id, path_id))
 
     size = n_agents * n_paths
-    path_collisions = np.zeros((size, size), dtype=np.int8)
+    path_collisions = np.zeros((size, size), dtype=np.int16)
     for group in itertools.chain(vertices.values(), edges.values()):
         for (a_agent, a_path), (b_agent, b_path) in itertools.combinations(group, 2):
             if a_agent == b_agent:
@@ -93,12 +93,11 @@ def build_cmatrix(agents: list[Agent]) -> CMatrix:
     return path_collisions
 
 
-@benchmark(n=10_000)
 def solution_cmatrix(cmatrix: CMatrix, solution: Solution) -> CMatrix:
     """
     Generate a solution collision matrix from a slice of the cmatrix.
     """
-    solution_idx = np.where(solution.flat > 0)[0]
+    solution_idx = np.where(solution.ravel() > 0)[0]
 
     return cmatrix[np.ix_(solution_idx, solution_idx)]
 
@@ -126,7 +125,6 @@ def priority_destroy_method(
 
     return subset
 
-
 def pp_repair_method(
     cmatrix: CMatrix,
     n_agents: int,
@@ -138,22 +136,24 @@ def pp_repair_method(
     Repair neighborhood with prioritized planning.
     """
 
-    def reroute_agent(current_solution: Solution, agent_id: int) -> int:
-        paths = np.arange(n_paths) + agent_id * n_paths
-        # cast to int16 to avoid overflow
-        cols = cmatrix[paths].astype(np.int16) * current_solution.flat
-
-        return np.argmin(cols)
-
     current_solution = solution.copy()
 
     # remove paths
     current_solution[neighborhood, :] = 0
 
-    for agent_id in neighborhood:
-        new_path_id = reroute_agent(current_solution, agent_id)
+    # flatten solution for indexing into solution matrix
+    current_solution = current_solution.flatten()
 
-        current_solution[agent_id][new_path_id] = 1
+    # for each agent, generate a [0, 1, ..., n_paths] array
+    all_paths = np.arange(n_paths) + neighborhood[:, None] * n_paths
+
+    for agent_id, paths in zip(neighborhood, all_paths):
+        cols = cmatrix[paths] * current_solution
+        new_path_id = np.argmin(cols)
+
+        current_solution[agent_id * n_paths + new_path_id] = 1
+
+    current_solution = current_solution.reshape(n_agents, n_paths)
 
     return current_solution
 

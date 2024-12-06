@@ -3,10 +3,8 @@ from heapq import heappush, heappop
 from typing import Tuple, List
 import networkx as nx
 from intervaltree import Interval
-
 from lns2.adaptive_lns_neighborhood_picker import AdaptiveLNSNeighborhoodPicker
 from lns2.node import Node
-from lns2.random_neighborhood_picker import RandomNeighborhoodPicker
 from lns2.safe_interval_table import SafeIntervalTable
 
 
@@ -33,7 +31,7 @@ class LNS2:
         self.neighborhood_picker: AdaptiveLNSNeighborhoodPicker = AdaptiveLNSNeighborhoodPicker(self.NEIGHBORHOOD_SIZE, gamma=0.1)
 
         # Starting the algorithm
-        solution = self.init_initial_solution()  # TODO change to proiritize planning
+        solution = self.init_initial_solution()  # TODO change to prioritize planning
         for _ in range(self.MAX_ITERATIONS):
             neighborhood = self.neighborhood_picker.pick(solution)
             for agent_id in neighborhood:
@@ -59,7 +57,6 @@ class LNS2:
         :param goal: The goal vertex.
         :return: A list of vertices representing the shortest path.
         """
-
         open_set = []
         heappush(open_set, (0, start, 0, []))  # (priority, current_vertex, time, path)
 
@@ -149,6 +146,9 @@ class LNS2:
         return None
 
     def heuristic(self, v1, v2):
+        """
+        Computes the heuristic value between two vertices, which is the shortest path length.
+        """
         return nx.shortest_path_length(self.graph, v1, v2)
     
     @staticmethod
@@ -190,6 +190,9 @@ class LNS2:
         heappush(open_list, n)
 
     def expand_node(self, n: Node, open_list: list[Node], closed_list: list[Node], safe_intervals: SafeIntervalTable, soft_obstacles: list[tuple[int, int]], hard_obstacles: list[tuple[int, int]], goal):
+        """
+        Expand a node n by generating its neighbors and inserting them into the open list
+        """
         I: list[(int, int)] = []
         for neighbor in self.graph.neighbors(n.vertex):
             I.extend([(neighbor, id_interval) for id_interval in range(len(safe_intervals[neighbor]))

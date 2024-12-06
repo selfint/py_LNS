@@ -2,6 +2,7 @@ import itertools
 import numpy as np
 import Agent
 from collections import defaultdict
+import networkx as nx
 class PathTable:
     """
     Represents paths in the grid.
@@ -31,6 +32,8 @@ class PathTable:
         # print(f"Inserting agent {agent_id} at ({x},{y}) at time {t}")
         if self.table[x, y, t]:
             for agent in self.table[x, y, t]:
+                if agent == agent_id:
+                    continue
                 self.collisions_matrix[agent_id, agent] = 1
                 self.collisions_matrix[agent, agent_id] = 1
                 self.num_of_collision_points += 1
@@ -40,6 +43,8 @@ class PathTable:
         for (x, y), t in zip(path, range(len(path))):
             self.table[x, y, t].remove(agent_id)
             for agent in self.table[x, y, t]:
+                if agent == agent_id:
+                    continue
                 self.collisions_matrix[agent_id, agent] = 0
                 self.collisions_matrix[agent, agent_id] = 0
                 self.num_of_collision_points -= 1
@@ -81,3 +86,18 @@ class PathTable:
         for (_,_,t), _ in self.table.items():
             makespan = max(t, makespan)
         self.makespan = makespan
+
+    def get_collisions_graph(self) -> nx.Graph:
+        """
+        Returns a graph where each node represents an agent and each edge (a1,a2) represents collision between
+        two agents a1 and a2
+        Returns: The graph
+        """
+        graph = nx.Graph()
+        graph.add_nodes_from(range(1, self.collisions_matrix.shape[0] + 1))
+        collision_matrix = self.get_collisions_matrix(None)
+        for x in range(0, collision_matrix.shape[0]):
+            for y in range(0, collision_matrix.shape[1]):
+                if collision_matrix[x][y] == 1:
+                    graph.add_edge(x, y)
+        return graph

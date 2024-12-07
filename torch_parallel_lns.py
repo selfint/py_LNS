@@ -91,7 +91,7 @@ def build_cmatrix(agents: list[Agent], device="cpu") -> CMatrix:
             path_collisions[a][b] = 1
             path_collisions[b][a] = 1
 
-    path_collisions = torch.Tensor(path_collisions, device=device)
+    path_collisions = torch.tensor(path_collisions, device=device)
 
     return path_collisions
 
@@ -114,7 +114,7 @@ def priority_destroy_method(
     random_ids = [agent_id for agent_id in range(n_agents)]
     subset = np.random.choice(random_ids, random_size, replace=False)
 
-    return torch.Tensor(subset, device=cmatrix.device).to(torch.int32)
+    return torch.tensor(subset, device=cmatrix.device, dtype=torch.int32)
 
 
 def pp_repair_method(
@@ -137,7 +137,7 @@ def pp_repair_method(
     current_solution_flat = current_solution.ravel()
 
     # for each agent, generate a [0, 1, ..., n_paths] array
-    all_paths = torch.arange(n_paths) + neighborhood[:, None] * n_paths
+    all_paths = torch.arange(n_paths, device=cmatrix.device) + neighborhood[:, None] * n_paths
 
     for agent_id, paths in zip(neighborhood, all_paths):
         current_idx = torch.nonzero(current_solution_flat, as_tuple=True)[0]

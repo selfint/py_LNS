@@ -200,7 +200,6 @@ def worker(shared_cmatrix: CMatrix, shared_solution: Solution, shared_collisions
 
         with lock:
             if new_collisions < shared_collisions:
-                print(new_collisions, shared_collisions)
                 shared_solution[:] = new_solution
                 shared_collisions.copy_(new_collisions)
 

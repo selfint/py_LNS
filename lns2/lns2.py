@@ -39,6 +39,9 @@ class LNS2:
             for agent_id in neighborhood:
                 del solution[agent_id]
             new_solution = self.construct_new_solution(neighborhood, solution)  # TODO what do we do if there is no solution
+            if new_solution is None:  # if we didn't find solution, try again
+                solution = old_solution
+                continue
             self.neighborhood_picker.update(self.num_of_colliding_pairs(old_solution) - self.num_of_colliding_pairs(new_solution))
             if self.num_of_colliding_pairs(new_solution) < self.num_of_colliding_pairs(old_solution):
                 solution = new_solution
@@ -104,7 +107,10 @@ class LNS2:
             existing_paths = {agent_id: solution[agent_id] for agent_id in solution}
             soft_obstacles: list[tuple[int, int]] = [(v, t) for _agent_id, path in existing_paths.items() for t,v in enumerate(path)]
             _, start, goal = self.agent_start_goal_list[agent_id]
-            new_solution[agent_id] = self.sipp_pathfinding(start, goal, existing_paths, soft_obstacles, [])
+            agent_solution = self.sipp_pathfinding(start, goal, existing_paths, soft_obstacles, [])
+            if agent_solution is None:
+                return None
+            new_solution[agent_id] = agent_solution
 
         return new_solution
 
@@ -147,7 +153,7 @@ class LNS2:
                 self.insert_node(n_tag, open_list, closed_list)
             self.expand_node(n, open_list, closed_list, safe_intervals, soft_obstacles, hard_obstacles, goal)
             heappush(closed_list, n)
-        raise ValueError("No path found")
+        return None
 
     def heuristic(self, v1, v2):
         """

@@ -5,10 +5,10 @@ from intervaltree import Interval, IntervalTree
 
 
 class SafeIntervalTable:
-    def __init__(self, vertices: List[int], paths: dict[int, List[int]], hard_obstacles: List[Tuple[int, int]]):
+    def __init__(self, vertices: list[object], paths: dict[int, List[int]], hard_obstacles: List[Tuple[int, int]]):
         self.paths = paths
         self.hard_obstacles = hard_obstacles
-        self.mapping: dict[int, IntervalTree] = dict()
+        self.mapping: dict[object, IntervalTree] = dict()
         for vertex in vertices:
             safe_interval = IntervalTree()
             safe_interval[0: float('inf')] = 'safe'
@@ -18,7 +18,7 @@ class SafeIntervalTable:
             self.mapping[hard_obstacle[0]].chop(hard_obstacle[1], hard_obstacle[1] + 1)
 
         for agent_id, path in paths.items():
-            for i, (vertex, time) in enumerate(path):
+            for time, vertex in enumerate(path):
                 self.mapping[vertex].chop(time, time + 1)
 
     def is_safe(self, neighbor, next_time):

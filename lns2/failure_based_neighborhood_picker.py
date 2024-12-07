@@ -1,5 +1,4 @@
-from lns2.neighborhood_picker import NeighborhoodPicker
-from lns2.random_neighborhood_picker import RandomNeighborhoodPicker
+from neighborhood_picker import NeighborhoodPicker
 
 
 class FailureBasedNeighborhoodPicker(NeighborhoodPicker):

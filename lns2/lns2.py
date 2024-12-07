@@ -1,18 +1,17 @@
 import copy
 from heapq import heappush, heappop
-from typing import Tuple, List
 import networkx as nx
 from intervaltree import Interval
-from lns2.adaptive_lns_neighborhood_picker import AdaptiveLNSNeighborhoodPicker
-from lns2.node import Node
-from lns2.safe_interval_table import SafeIntervalTable
+from adaptive_lns_neighborhood_picker import AdaptiveLNSNeighborhoodPicker
+from node import Node
+from safe_interval_table import SafeIntervalTable
 
 
 class LNS2:
     MAX_ITERATIONS = 1000
     NEIGHBORHOOD_SIZE = 10
 
-    def __init__(self, graph: nx.Graph, agent_start_goal_list: tuple[int, int, int],
+    def __init__(self, graph: nx.Graph, agent_start_goal_list: list[(int, int, int)],
                  hard_obstacles: list[tuple[int, int]]):
         """
         Initialize the LNS solver.
@@ -28,19 +27,23 @@ class LNS2:
         self.graph = graph
         self.agent_start_goal_list = agent_start_goal_list
         self.hard_obstacles = hard_obstacles
-        self.neighborhood_picker: AdaptiveLNSNeighborhoodPicker = AdaptiveLNSNeighborhoodPicker(self.NEIGHBORHOOD_SIZE, gamma=0.1)
+        self.neighborhood_picker: AdaptiveLNSNeighborhoodPicker = AdaptiveLNSNeighborhoodPicker(self.NEIGHBORHOOD_SIZE, gamma=0.1, graph=graph)
 
         # Starting the algorithm
         solution = self.init_initial_solution()  # TODO change to prioritize planning? where in the article
                                                 #  they say what to do?
-        for _ in range(self.MAX_ITERATIONS):
+        for i in range(self.MAX_ITERATIONS):
+            print(f"iteration {i}")
+            old_solution = copy.deepcopy(solution)
             neighborhood = self.neighborhood_picker.pick(solution)
             for agent_id in neighborhood:
                 del solution[agent_id]
-            new_solution = self.construct_new_solution(neighborhood, solution)
-            self.neighborhood_picker.update(self.num_of_colliding_pairs(solution) - self.num_of_colliding_pairs(new_solution)
-            if self.num_of_colliding_pairs(new_solution) < self.num_of_colliding_pairs(new_solution):
+            new_solution = self.construct_new_solution(neighborhood, solution)  # TODO what do we do if there is no solution
+            self.neighborhood_picker.update(self.num_of_colliding_pairs(old_solution) - self.num_of_colliding_pairs(new_solution))
+            if self.num_of_colliding_pairs(new_solution) < self.num_of_colliding_pairs(old_solution):
                 solution = new_solution
+            else:
+                solution = old_solution
 
     def init_initial_solution(self):
         solutions_dict = dict()
@@ -99,7 +102,7 @@ class LNS2:
         # For each agent in the neighborhood, we replan their path using sipp
         for agent_id in neighborhood:
             existing_paths = {agent_id: solution[agent_id] for agent_id in solution}
-            soft_obstacles: list[Tuple[int, int]] = [(v, t) for _agent_id, path in existing_paths.items() for t,v in enumerate(path)]
+            soft_obstacles: list[tuple[int, int]] = [(v, t) for _agent_id, path in existing_paths.items() for t,v in enumerate(path)]
             _, start, goal = self.agent_start_goal_list[agent_id]
             new_solution[agent_id] = self.sipp_pathfinding(start, goal, existing_paths, soft_obstacles, [])
 
@@ -118,7 +121,7 @@ class LNS2:
         meaning there is a hard obstacle in `vertex` at `timestamp`.
         :return: A list of vertices representing the shortest path found using SIPP.
         """
-        safe_intervals: SafeIntervalTable = SafeIntervalTable(self.graph.nodes, existing_paths, self.hard_obstacles)
+        safe_intervals: SafeIntervalTable = SafeIntervalTable(list(self.graph.nodes), existing_paths, self.hard_obstacles)
         root: Node = Node(vertex=start, safe_interval=safe_intervals[start][0], id=0, is_goal=False,
                     g=0,
                     h=self.heuristic(start, goal),
@@ -138,13 +141,13 @@ class LNS2:
                 c_future = len([(g, t) for g, t in soft_obstacles if t > T])
                 if c_future == 0:
                     return n.path
-                n_tag: Node = copy.deepcopy(n),
+                n_tag: Node = copy.deepcopy(n)
                 n_tag.is_goal = True
                 n_tag.c = n_tag.c + c_future
                 self.insert_node(n_tag, open_list, closed_list)
             self.expand_node(n, open_list, closed_list, safe_intervals, soft_obstacles, hard_obstacles, goal)
             heappush(closed_list, n)
-        return None
+        raise ValueError("No path found")
 
     def heuristic(self, v1, v2):
         """
@@ -176,7 +179,7 @@ class LNS2:
     def insert_node(self, n: Node, open_list: list[Node], closed_list: list[Node]):
         # we assume c f g h values are computed for n
         open_and_closed = open_list + closed_list
-        N = {q for q in open_and_closed if q.vertex == n.vertex and q.id == n.id and q.is_goal == n.is_goal}
+        N = [q for q in open_and_closed if q.vertex == n.vertex and q.id == n.id and q.is_goal == n.is_goal]
         for q in N:
             if q.safe_interval.begin <= n.safe_interval.begin and q.c <= n.c:
                 return
@@ -199,12 +202,12 @@ class LNS2:
             I.extend([(neighbor, id_interval) for id_interval in range(len(safe_intervals[neighbor]))
                       if safe_intervals[neighbor][id_interval].overlaps(Interval(n.safe_interval.begin + 1, n.safe_interval.end + 1))])
 
-        i = 0 # Testing that the if statement runs at most once
+        k = 0  # Testing that the if statement runs at most once
         for id_interval in range(len(safe_intervals[n.vertex])):
             if safe_intervals[n.vertex][id_interval].begin == n.safe_interval.end:
                 I.append((n.vertex, id_interval))
-                i += 1
-        assert i <= 1 # The if statement runs at most once
+                k = 1
+        assert k <= 1  # The if statement runs at most once
 
         for (v, id_interval) in I:
             low, high = safe_intervals[v][id_interval].begin, safe_intervals[v][id_interval].end
@@ -220,7 +223,7 @@ class LNS2:
     def find_edge_collisions(self, n, v, obstacles):
         # for i, (obstacle, time) in enumerate(obstacles):
         #     if obstacle == v and obstacles[i+1][0] == :
-        pass #TODO how do i know to detect an edge collision? I don't know if the obstacle "is going" fron v to n
+        pass  #TODO how do i know to detect an edge collision? I don't know if the obstacle "is going" fron v to n
         # or its just that there is another obstacle at v at the same time as n
 
 

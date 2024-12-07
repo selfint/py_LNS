@@ -20,7 +20,7 @@ class PathTable:
 
     def __init__(self, num_of_rows, num_of_cols, num_of_agents):
         self.table = defaultdict(set)
-        self.collisions_matrix = np.zeros((num_of_agents + 1, num_of_agents + 1))
+        self.collisions_matrix = np.zeros((num_of_agents + 2, num_of_agents + 2))
         self.num_of_collision_points = 0
         self.makespan = -1
 

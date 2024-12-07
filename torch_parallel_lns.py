@@ -8,7 +8,7 @@ from PathTable import iter_path
 from collections import defaultdict
 from benchmark_utils import benchmark
 import concurrent.futures
-from multiprocessing import shared_memory, Process
+import torch.multiprocessing as mp
 import torch
 
 
@@ -58,7 +58,7 @@ class RepairMethod(Protocol):
         raise NotImplementedError()
 
 
-def build_cmatrix(agents: list[Agent]) -> CMatrix:
+def build_cmatrix(agents: list[Agent], device="cpu") -> CMatrix:
     """
     Build a collision matrix for all agent paths.
     """
@@ -91,7 +91,7 @@ def build_cmatrix(agents: list[Agent]) -> CMatrix:
             path_collisions[a][b] = 1
             path_collisions[b][a] = 1
 
-    path_collisions = torch.Tensor(path_collisions)
+    path_collisions = torch.Tensor(path_collisions, device=device)
 
     return path_collisions
 
@@ -100,9 +100,9 @@ def solution_cmatrix(cmatrix: CMatrix, solution: Solution) -> CMatrix:
     """
     Generate a solution collision matrix from a slice of the cmatrix.
     """
-    solution_idx = torch.where(solution.ravel() > 0)[0]
+    solution_idx = torch.nonzero(solution.ravel(), as_tuple=True)[0]
 
-    return cmatrix[torch.meshgrid(solution_idx, solution_idx, indexing="ij")]
+    return cmatrix[solution_idx][:,solution_idx]
 
 
 def priority_destroy_method(
@@ -114,7 +114,7 @@ def priority_destroy_method(
     random_ids = [agent_id for agent_id in range(n_agents)]
     subset = np.random.choice(random_ids, random_size, replace=False)
 
-    return torch.Tensor(subset).to(torch.int32)
+    return torch.Tensor(subset, device=cmatrix.device).to(torch.int32)
 
 
 def pp_repair_method(
@@ -134,18 +134,17 @@ def pp_repair_method(
     current_solution[neighborhood, :] = 0
 
     # flatten solution for indexing into solution matrix
-    current_solution = current_solution.flatten()
+    current_solution_flat = current_solution.ravel()
 
     # for each agent, generate a [0, 1, ..., n_paths] array
     all_paths = torch.arange(n_paths) + neighborhood[:, None] * n_paths
 
     for agent_id, paths in zip(neighborhood, all_paths):
-        cols = cmatrix[paths][:,torch.where(current_solution > 0)[0]].sum(axis=1)
+        current_idx = torch.nonzero(current_solution_flat, as_tuple=True)[0]
+        cols = cmatrix[paths][:,current_idx].sum(axis=1)
         new_path_id = torch.argmin(cols)
 
-        current_solution[agent_id * n_paths + new_path_id] = 1
-
-    current_solution = current_solution.reshape(n_agents, n_paths)
+        current_solution[agent_id][new_path_id] = 1
 
     return current_solution
 
@@ -175,13 +174,37 @@ def run_iteration(
 
     new_collisions = solution_cmatrix(cmatrix, new_solution).sum() // 2
 
+    # print(
+    #     "@",
+    #     neighborhood + 1,
+    #     torch.nonzero(new_solution.ravel(), as_tuple=True)[0][neighborhood],
+    #     new_collisions,
+    #     collisions,
+    # )
+
     if new_collisions < collisions:
         return new_solution, new_collisions.item()
     else:
         return solution, collisions
 
+def worker(shared_cmatrix: CMatrix, shared_solution: Solution, shared_collisions: torch.Tensor, lock, args):
+    n_agents, n_paths, destroy_method, repair_method, neighborhood_size, n_sub_iterations = args
 
-def run_parallel_iteration(
+    for _ in range(n_sub_iterations):
+        with lock:
+            solution = shared_solution.clone()
+
+        neighborhood = destroy_method(shared_cmatrix, solution, n_paths, neighborhood_size)
+        new_solution = repair_method(shared_cmatrix, n_agents, n_paths, solution, neighborhood)
+        new_collisions = solution_cmatrix(shared_cmatrix, new_solution).sum() // 2
+
+        with lock:
+            if new_collisions < shared_collisions:
+                print(new_collisions, shared_collisions)
+                shared_solution[:] = new_solution
+                shared_collisions.copy_(new_collisions)
+
+def run_parallel(
     cmatrix: CMatrix,
     n_agents: int,
     n_paths: int,
@@ -194,44 +217,86 @@ def run_parallel_iteration(
     n_sub_iterations: int,
 ) -> tuple[Solution, int]:
 
-    def create_shared_memory(array):
-        shm = shared_memory.SharedMemory(create=True, size=array.nbytes)
-        shared_array = np.ndarray(array.shape, dtype=array.dtype, buffer=shm.buf)
-        np.copyto(shared_array, array)
-        return shm
+    shared_cmatrix = cmatrix.share_memory_()
+    shared_solution = solution.share_memory_()
+    shared_collisions = torch.tensor(collisions, dtype=torch.int32, device=cmatrix.device).share_memory_()
 
-    shm_data = create_shared_memory(cmatrix.data)
-    shm_indices = create_shared_memory(cmatrix.indices)
-    shm_indptr = create_shared_memory(cmatrix.indptr)
+    lock = mp.Lock()
 
-    dtype = cmatrix.dtype
+    args = (
+        shared_cmatrix,
+        shared_solution,
+        shared_collisions,
+        lock,
+        (
+            n_agents,
+            n_paths,
+            destroy_method,
+            repair_method,
+            neighborhood_size,
+            n_sub_iterations,
+        ),
+    )
 
-    def run():
-        thread_cols = collisions
-        thread_solution = solution.copy()
+    workers = []
+    for _ in range(n_threads):
+        p = mp.Process(target=worker, args=args)
+        workers.append(p)
+        p.start()
 
-        data = np.ndarray((shm_data.size // dtype.itemsize,), dtype=dtype, buffer=shm_data.buf)
-        indices = np.ndarray((shm_indices.size // dtype.itemsize,), dtype=dtype, buffer=shm_indices.buf)
-        indptr = np.ndarray((shm_indptr.size // dtype.itemsize,), dtype=dtype, buffer=shm_indptr.buf)
+    for p in workers:
+        p.join()
 
-        thread_cmatrix = scipy.sparse.csr_matrix(
-            (data, indices, indptr), shape=cmatrix.shape, copy=False
-        )
+    sol = shared_solution.argmax(dim=1)
+    print(f"Final solution: {sol} {shared_collisions=}")
 
-        print(thread_cmatrix.toarray())
+    return shared_solution, shared_collisions
 
-    with concurrent.futures.ProcessPoolExecutor(max_workers=n_threads) as executor:
+
+def iteration_worker(shared_cmatrix: CMatrix, n_sub_iterations, args) -> tuple[Solution, int]:
+    new_solution = args[2].clone()
+    collisions = args[3]
+
+    for sub_iteration in range(n_sub_iterations):
+        new_solution, new_collisions = run_iteration(shared_cmatrix, *args)
+
+        if new_collisions < collisions:
+            return new_solution, new_collisions
+        
+    return new_solution, new_collisions
+
+def run_parallel_iteration(
+    shared_cmatrix: CMatrix,
+    n_agents: int,
+    n_paths: int,
+    solution: Solution,
+    collisions: int,
+    destroy_method: DestroyMethod,
+    repair_method: RepairMethod,
+    neighborhood_size: int,
+    n_threads: int,
+    n_sub_iterations: int,
+) -> tuple[Solution, int]:
+
+    args = [
+        n_agents,
+        n_paths,
+        solution,
+        collisions,
+        destroy_method,
+        repair_method,
+        neighborhood_size
+    ]
+
+    with concurrent.futures.ProcessPoolExecutor(max_workers=n_threads) as ex:
         futures = [
-            executor.submit(
-                run,
-            )
+            ex.submit(iteration_worker, shared_cmatrix, n_sub_iterations, args)
             for _ in range(n_threads)
         ]
 
         for future in concurrent.futures.as_completed(futures):
-            pass
+            f_solution, f_collisions = future.result()
+            if f_collisions < collisions:
+                return f_solution, f_collisions
 
-    shm_data.close()
-    shm_indices.close()
-    shm_indptr.close()
-
+    return solution, collisions

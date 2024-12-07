@@ -669,8 +669,9 @@ def parallelism_ablation_exp(
 def stateless_solver_test_exp(
     map_path, agent_path, n_paths, test_iterations, temp, verbose
 ):
-    import parallel_lns
+    import torch_parallel_lns as parallel_lns
     import time
+    import torch
 
     test_iterations = 1000
 
@@ -696,7 +697,7 @@ def stateless_solver_test_exp(
     solvers.random_initial_solution(inst, table)
 
     n_agents = inst.num_agents
-    p_solution = np.zeros((n_agents, n_paths), dtype=np.int8)
+    p_solution = torch.zeros((n_agents, n_paths), dtype=torch.int8)
     for agent in inst.agents.values():
         p_solution[agent.id - 1][agent.path_id] = 1
 
@@ -736,13 +737,15 @@ def stateless_solver_test_exp(
         start = time.time()
         p_solution, p_num_collisions = parallel_lns.run_iteration(
             p_cmatrix,
-            n_agents,
-            n_paths,
             p_solution,
             p_num_collisions,
-            destroy_method=parallel_lns.priority_destroy_method,
-            repair_method=parallel_lns.pp_repair_method,
-            neighborhood_size=subset_size,
+            parallel_lns.Configuration(
+                n_agents,
+                n_paths,
+                destroy_method=parallel_lns.priority_destroy_method,
+                repair_method=parallel_lns.pp_repair_method,
+                neighborhood_size=subset_size,
+            )
         )
         p_duration_ms = ((time.time() - start) * 1000)
 
@@ -750,7 +753,7 @@ def stateless_solver_test_exp(
         p_durations.append(p_duration_ms)
 
         cmatrix = solver.path_table.get_collisions_matrix(inst.num_agents)
-        p_collisions = parallel_lns.solution_cmatrix(p_cmatrix, p_solution).toarray()
+        p_collisions = parallel_lns.solution_cmatrix(p_cmatrix, p_solution).numpy()
                 
         for agent, m_agent in zip(sorted(inst.agents.values(), key=lambda a: a.id), p_solution):
             p_path_id = np.where(m_agent > 0)[0]

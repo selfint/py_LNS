@@ -1,4 +1,4 @@
-from typing import Protocol
+from typing import Protocol, NamedTuple
 import itertools
 import numpy as np
 import numpy.typing as npt
@@ -149,69 +149,71 @@ def pp_repair_method(
     return current_solution
 
 
+class Configuration(NamedTuple):
+    n_agents: int
+    n_paths: int
+    destroy_method: DestroyMethod
+    repair_method: RepairMethod
+    neighborhood_size: int
+
+
 def run_iteration(
     cmatrix: CMatrix,
-    n_agents: int,
-    n_paths: int,
     solution: Solution,
     collisions: int,
-    destroy_method: DestroyMethod,
-    repair_method: RepairMethod,
-    neighborhood_size: int,
+    c: Configuration,
 ) -> tuple[Solution, int]:
     """
-    Runs LNS on the agent paths.
-
-    Args:
-        agents (list[Agent]): the agents
-
-    Returns:
-        Solution: the solution
+    Runs iteration.
     """
 
-    neighborhood = destroy_method(cmatrix, solution, n_paths, neighborhood_size)
-    new_solution = repair_method(cmatrix, n_agents, n_paths, solution, neighborhood)
-
+    neighborhood = c.destroy_method(cmatrix, solution, c.n_paths, c.neighborhood_size)
+    new_solution = c.repair_method(cmatrix, c.n_agents, c.n_paths, solution, neighborhood)
     new_collisions = solution_cmatrix(cmatrix, new_solution).sum() // 2
-
-    # print(
-    #     "@",
-    #     neighborhood + 1,
-    #     torch.nonzero(new_solution.ravel(), as_tuple=True)[0][neighborhood],
-    #     new_collisions,
-    #     collisions,
-    # )
 
     if new_collisions < collisions:
         return new_solution, new_collisions.item()
     else:
         return solution, collisions
 
-def worker(shared_cmatrix: CMatrix, shared_solution: Solution, shared_collisions: torch.Tensor, lock, args):
-    n_agents, n_paths, destroy_method, repair_method, neighborhood_size, n_sub_iterations = args
 
-    for _ in range(n_sub_iterations):
+def worker(
+    shared_cmatrix: CMatrix,
+    shared_solution: Solution,
+    shared_collisions: torch.Tensor,
+    lock,
+    c: Configuration,
+    n_iterations: int
+):
+    import time
+    start = time.time()
+
+    with lock:
+        thread_solution = shared_solution.clone()
+        thread_collisions = shared_collisions.clone()
+
+    for _ in range(n_iterations):
         with lock:
-            solution = shared_solution.clone()
+            if shared_collisions < thread_collisions:
+                thread_solution = shared_solution.clone()
+                thread_collisions = shared_collisions.clone()
 
-        neighborhood = destroy_method(shared_cmatrix, solution, n_paths, neighborhood_size)
-        new_solution = repair_method(shared_cmatrix, n_agents, n_paths, solution, neighborhood)
-        new_collisions = solution_cmatrix(shared_cmatrix, new_solution).sum() // 2
+        neighborhood = c.destroy_method(shared_cmatrix, thread_solution, c.n_paths, c.neighborhood_size)
+        thread_solution = c.repair_method(shared_cmatrix, c.n_agents, c.n_paths, thread_solution, neighborhood)
+        thread_collisions = solution_cmatrix(shared_cmatrix, thread_solution).sum() // 2
 
         with lock:
-            if new_collisions < shared_collisions:
-                shared_solution[:] = new_solution
-                shared_collisions.copy_(new_collisions)
+            if thread_collisions < shared_collisions:
+                print(thread_collisions, time.time() - start)
+                shared_solution[:] = thread_solution
+                shared_collisions.copy_(thread_collisions)
+
 
 def run_parallel(
     cmatrix: CMatrix,
-    n_agents: int,
-    n_paths: int,
     solution: Solution,
     collisions: int,
-    destroy_method: DestroyMethod,
-    repair_method: RepairMethod,
-    neighborhood_size: int,
+    c: Configuration,
     n_threads: int,
     n_sub_iterations: int,
 ) -> tuple[Solution, int]:
@@ -227,14 +229,8 @@ def run_parallel(
         shared_solution,
         shared_collisions,
         lock,
-        (
-            n_agents,
-            n_paths,
-            destroy_method,
-            repair_method,
-            neighborhood_size,
-            n_sub_iterations,
-        ),
+        c,
+        n_sub_iterations,
     )
 
     workers = []
@@ -249,53 +245,4 @@ def run_parallel(
     sol = shared_solution.argmax(dim=1)
     print(f"Final solution: {sol} {shared_collisions=}")
 
-    return shared_solution, shared_collisions
-
-
-def iteration_worker(shared_cmatrix: CMatrix, n_sub_iterations, args) -> tuple[Solution, int]:
-    new_solution = args[2].clone()
-    collisions = args[3]
-
-    for sub_iteration in range(n_sub_iterations):
-        new_solution, new_collisions = run_iteration(shared_cmatrix, *args)
-
-        if new_collisions < collisions:
-            return new_solution, new_collisions
-        
-    return new_solution, new_collisions
-
-def run_parallel_iteration(
-    shared_cmatrix: CMatrix,
-    n_agents: int,
-    n_paths: int,
-    solution: Solution,
-    collisions: int,
-    destroy_method: DestroyMethod,
-    repair_method: RepairMethod,
-    neighborhood_size: int,
-    n_threads: int,
-    n_sub_iterations: int,
-) -> tuple[Solution, int]:
-
-    args = [
-        n_agents,
-        n_paths,
-        solution,
-        collisions,
-        destroy_method,
-        repair_method,
-        neighborhood_size
-    ]
-
-    with concurrent.futures.ProcessPoolExecutor(max_workers=n_threads) as ex:
-        futures = [
-            ex.submit(iteration_worker, shared_cmatrix, n_sub_iterations, args)
-            for _ in range(n_threads)
-        ]
-
-        for future in concurrent.futures.as_completed(futures):
-            f_solution, f_collisions = future.result()
-            if f_collisions < collisions:
-                return f_solution, f_collisions
-
-    return solution, collisions
+    return shared_solution, int(shared_collisions.item())

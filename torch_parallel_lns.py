@@ -195,7 +195,8 @@ def worker(
         thread_solution = shared_solution.clone()
         thread_collisions = shared_collisions.clone()
 
-    for _ in range(n_iterations):
+    for iteration in range(n_iterations):
+        # if iteration % 5 == 0:
         with lock:
             if shared_collisions < thread_collisions:
                 thread_solution = shared_solution.clone()
@@ -225,7 +226,7 @@ def run_parallel(
     c: Configuration,
     n_threads: int,
     n_sub_iterations: int,
-) -> tuple[Solution, int, list[tuple[int, int]]]:
+) -> tuple[Solution, int, list[float], list[int]]:
 
     shared_cmatrix = cmatrix.share_memory_()
     shared_solution = solution.share_memory_()
@@ -264,7 +265,10 @@ def run_parallel(
     for p in workers:
         p.join()
 
+    timestamps_ms = [t for t, _ in log_values]
+    log_collisions = [c for _, c in log_values]
+
     sol = shared_solution.argmax(dim=1)
     print(f"Solution: {sol} {shared_collisions=}")
 
-    return shared_solution, int(shared_collisions.item()), log_values
+    return shared_solution, int(shared_collisions.item()), timestamps_ms, log_collisions

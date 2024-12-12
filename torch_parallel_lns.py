@@ -152,6 +152,55 @@ def pp_repair_method(
     return current_solution
 
 
+def exhaustive_repair_method(
+    cmatrix: CMatrix,
+    n_agents: int,
+    n_paths: int,
+    solution: Solution,
+    neighborhood: Neighborhood,
+) -> Solution:
+    """
+    Repair neighborhood with exhaustive solver.
+    """
+
+    current_solution = solution.clone()
+
+    # remove paths
+    current_solution[neighborhood, :] = 0
+
+    permutations = torch.cartesian_prod(
+        *(torch.arange(n_paths) + agent_id * n_paths for agent_id in neighborhood)
+    )
+
+    solutions = (
+        current_solution.ravel()
+        .repeat(len(permutations))
+        .reshape(-1, n_agents * n_paths)
+    )
+
+    batch_size = len(solutions)
+
+    solutions[torch.arange(len(permutations)).unsqueeze(1), permutations] = 1
+
+    solutions = solutions.reshape(-1, n_agents, n_paths).argmax(dim=2)
+    solutions += (
+        (torch.arange(n_agents) * n_paths)
+        .repeat(len(solutions))
+        .reshape(batch_size, n_agents)
+    )
+
+    # Perform the operation to get the desired result without a for loop
+    rows = solutions.unsqueeze(2).expand(batch_size, n_agents, n_agents)  # [M, X, X]
+    cols = solutions.unsqueeze(1).expand(batch_size, n_agents, n_agents)  # [M, X, X]
+
+    sub_matrices = cmatrix[rows, cols]
+    result = sub_matrices.sum(dim=(1, 2))
+    best_solution = solutions[result.argmin()]
+    current_solution.ravel()[best_solution] = 1
+
+    return current_solution
+
+
 class Configuration(NamedTuple):
     n_agents: int
     n_paths: int

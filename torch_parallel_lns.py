@@ -30,8 +30,14 @@ Neighborhood = torch.Tensor
 
 
 class DestroyMethod(Protocol):
+
     def __call__(
-        self, cmatrix: CMatrix, solution: Solution, n_paths: int, size: int
+        self,
+        cmatrix: CMatrix,
+        solution: Solution,
+        n_agents: int,
+        n_paths: int,
+        n_subset: int,
     ) -> Neighborhood:
         """
         Generate a mask of size (agents) specifying which agents to destroy.
@@ -43,6 +49,7 @@ class DestroyMethod(Protocol):
 
 
 class RepairMethod(Protocol):
+
     def __call__(
         self,
         cmatrix: CMatrix,
@@ -105,16 +112,10 @@ def solution_cmatrix(cmatrix: CMatrix, solution: Solution) -> CMatrix:
     return cmatrix[solution_idx][:, solution_idx]
 
 
-def priority_destroy_method(
-    cmatrix: CMatrix, solution: Solution, n_paths: int, size: int
+def random_destroy_method(
+    cmatrix: CMatrix, solution: Solution, n_agents: int, n_paths: int, n_subset: int
 ) -> Neighborhood:
-    n_agents = len(solution)
-
-    random_size = size
-    random_ids = [agent_id for agent_id in range(n_agents)]
-    subset = np.random.choice(random_ids, random_size, replace=False)
-
-    return torch.tensor(subset, device=cmatrix.device, dtype=torch.int32)
+    return torch.randperm(n_agents, device=cmatrix.device)[:n_subset]
 
 
 def pp_repair_method(
@@ -218,7 +219,9 @@ def run_iteration(
     Runs iteration.
     """
 
-    neighborhood = c.destroy_method(cmatrix, solution, c.n_paths, c.neighborhood_size)
+    neighborhood = c.destroy_method(
+        cmatrix, solution, c.n_agents, c.n_paths, c.neighborhood_size
+    )
     new_solution = c.repair_method(
         cmatrix, c.n_agents, c.n_paths, solution, neighborhood
     )
@@ -244,7 +247,7 @@ def worker(
 
     while True:
         neighborhood = c.destroy_method(
-            shared_cmatrix, thread_solution, c.n_paths, c.neighborhood_size
+            shared_cmatrix, thread_solution, c.n_agents, c.n_paths, c.neighborhood_size
         )
         thread_solution = c.repair_method(
             shared_cmatrix, c.n_agents, c.n_paths, thread_solution, neighborhood

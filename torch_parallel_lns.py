@@ -1,17 +1,16 @@
-from typing import Protocol, NamedTuple, Optional
 import itertools
-import numpy as np
-import numpy.typing as npt
-import scipy.sparse
-from Agent import Agent
-from PathTable import iter_path
-from collections import defaultdict
-from benchmark_utils import benchmark
-import concurrent.futures
-import torch.multiprocessing as mp
-import torch
 import time
+from collections import defaultdict
+from typing import NamedTuple, Protocol
 
+import numpy as np
+import torch
+import torch.multiprocessing as mp
+from tqdm import tqdm
+
+from Agent import Agent
+from benchmark_utils import benchmark
+from PathTable import iter_path
 
 CMatrix = torch.Tensor
 """
@@ -72,7 +71,7 @@ def build_cmatrix(agents: list[Agent], device="cpu") -> CMatrix:
     for agent in agents:
         agent_id = agent.id - 1
         for path_id, locations in enumerate(agent.paths):
-            for vertex, edge in iter_path(locations):
+            for vertex, edge in iter_path(locations):  # type: ignore
                 vertices[vertex].add((agent_id, path_id))
 
                 if edge is not None:
@@ -144,7 +143,7 @@ def pp_repair_method(
 
     for agent_id, paths in zip(neighborhood, all_paths):
         current_idx = torch.nonzero(current_solution_flat, as_tuple=True)[0]
-        cols = cmatrix[paths][:, current_idx].sum(axis=1)
+        cols = cmatrix[paths][:, current_idx].sum(dim=1)
         new_path_id = torch.argmin(cols)
 
         current_solution[agent_id][new_path_id] = 1
@@ -226,7 +225,7 @@ def run_iteration(
     new_collisions = solution_cmatrix(cmatrix, new_solution).sum() // 2
 
     if new_collisions < collisions:
-        return new_solution, new_collisions.item()
+        return new_solution, new_collisions.item()  # type: ignore
     else:
         return solution, collisions
 
@@ -235,22 +234,15 @@ def worker(
     shared_cmatrix: CMatrix,
     shared_solution: Solution,
     shared_collisions: torch.Tensor,
+    shared_iterations: torch.Tensor,
     lock,
     c: Configuration,
-    n_iterations: int,
-    log: Optional[mp.Queue] = None,
 ):
     with lock:
         thread_solution = shared_solution.clone()
         thread_collisions = shared_collisions.clone()
 
-    for iteration in range(n_iterations):
-        # if iteration % 5 == 0:
-        with lock:
-            if shared_collisions < thread_collisions:
-                thread_solution = shared_solution.clone()
-                thread_collisions = shared_collisions.clone()
-
+    while True:
         neighborhood = c.destroy_method(
             shared_cmatrix, thread_solution, c.n_paths, c.neighborhood_size
         )
@@ -260,12 +252,14 @@ def worker(
         thread_collisions = solution_cmatrix(shared_cmatrix, thread_solution).sum() // 2
 
         with lock:
+            shared_iterations += 1
+
             if thread_collisions < shared_collisions:
                 shared_solution[:] = thread_solution
                 shared_collisions.copy_(thread_collisions)
-
-                if log is not None:
-                    log.put(thread_collisions.item())
+            else:
+                thread_solution = shared_solution.clone()
+                thread_collisions = shared_collisions.clone()
 
 
 def run_parallel(
@@ -274,7 +268,7 @@ def run_parallel(
     collisions: int,
     c: Configuration,
     n_threads: int,
-    n_sub_iterations: int,
+    n_seconds: int,
 ) -> tuple[Solution, int, list[float], list[int]]:
 
     shared_cmatrix = cmatrix.share_memory_()
@@ -282,18 +276,17 @@ def run_parallel(
     shared_collisions = torch.tensor(
         collisions, dtype=torch.int32, device=cmatrix.device
     ).share_memory_()
+    shared_iterations = torch.tensor(0).share_memory_()
 
     lock = mp.Lock()
-    log = mp.Queue()
 
     args = (
         shared_cmatrix,
         shared_solution,
         shared_collisions,
+        shared_iterations,
         lock,
         c,
-        n_sub_iterations,
-        log,
     )
 
     workers = []
@@ -303,21 +296,28 @@ def run_parallel(
         p.start()
 
     # while workers working
-    is_working = True
+    start = time.time()
     log_values = []
-    while is_working:
-        is_working = any(p.is_alive() for p in workers)
+    with tqdm(total=n_seconds, desc="Processing") as pbar:
+        while time.time() - start < n_seconds:
+            with lock:
+                iterations = shared_iterations.item()
+                # cols = int(shared_collisions.item())
 
-        while not log.empty():
-            log_values.append(((time.time() * 1000, log.get())))
+            log_values.append((((time.time() - start) * 1_000, iterations)))
+            # pbar.set_description(
+            #     f"P {n_threads: 2} Iterations: {iterations} Cols: {cols}"
+            # )
+            time.sleep(0.5)
+            pbar.update(0.5)
 
     for p in workers:
+        p.kill()
         p.join()
 
     timestamps_ms = [t for t, _ in log_values]
-    log_collisions = [c for _, c in log_values]
+    iterations = [c for _, c in log_values]
 
     sol = shared_solution.argmax(dim=1)
-    print(f"Solution: {sol} {shared_collisions=}")
 
-    return shared_solution, int(shared_collisions.item()), timestamps_ms, log_collisions
+    return shared_solution, int(shared_collisions.item()), timestamps_ms, iterations

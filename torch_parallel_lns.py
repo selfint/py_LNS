@@ -9,7 +9,7 @@ import torch.multiprocessing as mp
 from tqdm import tqdm
 
 from Agent import Agent
-from benchmark_utils import benchmark
+from benchmark_utils import benchmark, Benchmark
 from PathTable import iter_path
 
 CMatrix = torch.Tensor
@@ -118,6 +118,7 @@ def random_destroy_method(
     return torch.randperm(n_agents, device=cmatrix.device)[:n_subset]
 
 
+# @benchmark(n=10_000)
 def pp_repair_method(
     cmatrix: CMatrix,
     n_agents: int,
@@ -207,6 +208,7 @@ class Configuration(NamedTuple):
     destroy_method: DestroyMethod
     repair_method: RepairMethod
     neighborhood_size: int
+    simulated_annealing: tuple[float, float, float] | None = None
 
 
 def run_iteration(
@@ -245,9 +247,16 @@ def worker(
         thread_solution = shared_solution.clone()
         thread_collisions = shared_collisions.clone()
 
+    # bench = Benchmark(n=10_000)
+
     while True:
+        # with bench.benchmark(label="Worker iteration"):
         neighborhood = c.destroy_method(
-            shared_cmatrix, thread_solution, c.n_agents, c.n_paths, c.neighborhood_size
+            shared_cmatrix,
+            thread_solution,
+            c.n_agents,
+            c.n_paths,
+            c.neighborhood_size,
         )
         thread_solution = c.repair_method(
             shared_cmatrix, c.n_agents, c.n_paths, thread_solution, neighborhood
@@ -257,7 +266,17 @@ def worker(
         with lock:
             shared_iterations += 1
 
-            if thread_collisions < shared_collisions:
+            # Exponential decay on simulated annealing probability
+            if c.simulated_annealing is not None:
+                A, k, s = c.simulated_annealing
+                decay_factor = A * torch.exp(k * -shared_iterations / s)
+                simulated_annealing = (
+                    c.simulated_annealing and torch.rand(1).item() < decay_factor
+                )
+            else:
+                simulated_annealing = False
+
+            if thread_collisions < shared_collisions or simulated_annealing:
                 shared_solution[:] = thread_solution
                 shared_collisions.copy_(thread_collisions)
             else:
@@ -272,6 +291,7 @@ def run_parallel(
     c: Configuration,
     n_threads: int,
     n_seconds: int,
+    optimal: int = 0,
 ) -> tuple[Solution, int, list[float], list[int]]:
 
     shared_cmatrix = cmatrix.share_memory_()
@@ -305,12 +325,16 @@ def run_parallel(
         while time.time() - start < n_seconds:
             with lock:
                 iterations = shared_iterations.item()
-                # cols = int(shared_collisions.item())
+                cols = int(shared_collisions.item())
 
             log_values.append((((time.time() - start) * 1_000, iterations)))
-            # pbar.set_description(
-            #     f"P {n_threads: 2} Iterations: {iterations} Cols: {cols}"
-            # )
+            pbar.set_description(
+                f"P {n_threads: 2} Iterations: {iterations} Cols: {cols}"
+            )
+
+            if cols <= optimal:
+                break
+
             time.sleep(0.5)
             pbar.update(0.5)
 

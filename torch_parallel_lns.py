@@ -205,8 +205,8 @@ def exhaustive_repair_method(
 class Configuration(NamedTuple):
     n_agents: int
     n_paths: int
-    destroy_method: DestroyMethod
-    repair_method: RepairMethod
+    destroy_method: list[DestroyMethod]
+    repair_method: list[RepairMethod]
     neighborhood_size: int
     simulated_annealing: tuple[float, float, float] | None = None
 
@@ -221,10 +221,10 @@ def run_iteration(
     Runs iteration.
     """
 
-    neighborhood = c.destroy_method(
+    neighborhood = c.destroy_method[0](
         cmatrix, solution, c.n_agents, c.n_paths, c.neighborhood_size
     )
-    new_solution = c.repair_method(
+    new_solution = c.repair_method[0](
         cmatrix, c.n_agents, c.n_paths, solution, neighborhood
     )
     new_collisions = solution_cmatrix(cmatrix, new_solution).sum() // 2
@@ -242,6 +242,7 @@ def worker(
     shared_iterations: torch.Tensor,
     lock,
     c: Configuration,
+    thread_id: int,
 ):
     with lock:
         thread_solution = shared_solution.clone()
@@ -249,16 +250,15 @@ def worker(
 
     # bench = Benchmark(n=10_000)
 
+    destroy_method = c.destroy_method[thread_id % len(c.destroy_method)]
+    repair_method = c.repair_method[thread_id % len(c.repair_method)]
+
     while True:
         # with bench.benchmark(label="Worker iteration"):
-        neighborhood = c.destroy_method(
-            shared_cmatrix,
-            thread_solution,
-            c.n_agents,
-            c.n_paths,
-            c.neighborhood_size,
+        neighborhood = destroy_method(
+            shared_cmatrix, thread_solution, c.n_agents, c.n_paths, c.neighborhood_size
         )
-        thread_solution = c.repair_method(
+        thread_solution = repair_method(
             shared_cmatrix, c.n_agents, c.n_paths, thread_solution, neighborhood
         )
         thread_collisions = solution_cmatrix(shared_cmatrix, thread_solution).sum() // 2
@@ -313,15 +313,15 @@ def run_parallel(
     )
 
     workers = []
-    for _ in range(n_threads):
-        p = mp.Process(target=worker, args=args)
+    for thread_id in range(n_threads):
+        p = mp.Process(target=worker, args=(*args, thread_id))
         workers.append(p)
         p.start()
 
     # while workers working
     start = time.time()
     log_values = []
-    with tqdm(total=n_seconds, desc="Processing") as pbar:
+    with tqdm(total=n_seconds) as pbar:
         while time.time() - start < n_seconds:
             with lock:
                 iterations = shared_iterations.item()

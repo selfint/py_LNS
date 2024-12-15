@@ -346,8 +346,8 @@ def stateless_solver_test_exp(
             parallel_lns.Configuration(
                 n_agents,
                 n_paths,
-                destroy_method=parallel_lns.random_destroy_method,
-                repair_method=parallel_lns.pp_repair_method,
+                destroy_method=[parallel_lns.random_destroy_method],
+                repair_method=[parallel_lns.pp_repair_method],
                 neighborhood_size=subset_size,
             ),
         )
@@ -477,6 +477,7 @@ def stateless_solver_parallelism_exp(
     temp,
     verbose,
     n_seconds,
+    config: parallel_lns.Configuration,
     n_threads,
     results_dir: Path,
     optimal: int = 0,
@@ -502,9 +503,10 @@ def stateless_solver_parallelism_exp(
         verbose=verbose,
     )
 
-    subset_size = 20
-
     agents = list(sorted(inst.agents.values(), key=lambda a: a.id))
+    assert config.n_agents == len(
+        agents
+    ), f"Invalid number of agents: {config.n_agents} expected {len(agents)}"
 
     p_cmatrix = parallel_lns.build_cmatrix(agents)
 
@@ -543,13 +545,7 @@ def stateless_solver_parallelism_exp(
         p_cmatrix,
         p_solution,
         p_cols,
-        c=parallel_lns.Configuration(
-            n_agents,
-            n_paths,
-            destroy_method=parallel_lns.random_destroy_method,
-            repair_method=parallel_lns.pp_double_repair_method,
-            neighborhood_size=subset_size,
-        ),
+        c=config,
         n_threads=n_threads,
         n_seconds=n_seconds,
         optimal=optimal,
@@ -608,6 +604,7 @@ def stateless_solver_parallelism_ablation_exp(
     temp,
     verbose,
     n_seconds,
+    config: parallel_lns.Configuration,
     results_dir: Path,
 ):
     """
@@ -671,8 +668,8 @@ def stateless_solver_parallelism_ablation_exp(
             parallel_lns.Configuration(
                 n_agents,
                 n_paths,
-                destroy_method=parallel_lns.random_destroy_method,
-                repair_method=parallel_lns.pp_repair_method,
+                destroy_method=[parallel_lns.random_destroy_method],
+                repair_method=[parallel_lns.pp_repair_method],
                 neighborhood_size=subset_size,
             ),
         )
@@ -710,8 +707,8 @@ def stateless_solver_parallelism_ablation_exp(
             c=parallel_lns.Configuration(
                 n_agents,
                 n_paths,
-                destroy_method=parallel_lns.random_destroy_method,
-                repair_method=parallel_lns.pp_repair_method,
+                destroy_method=[parallel_lns.random_destroy_method],
+                repair_method=[parallel_lns.pp_repair_method],
                 neighborhood_size=subset_size,
             ),
             n_threads=n_threads,

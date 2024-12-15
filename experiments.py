@@ -14,6 +14,7 @@ from visualization import visualize, draw_graph_highlight_paths
 from PathGenerator import k_shortest_paths
 import tqdm
 from pathlib import Path
+import torch_parallel_lns as parallel_lns
 
 def run_scenario(map_path, agent_path, solver, log_file = 'experiments.csv', verbose = True, n_paths = 2, temp = 1):
     inst = instance.instance(map_path, agent_path, solver, verbose, n_paths, agent_path_temp = temp)
@@ -382,6 +383,93 @@ def stateless_solver_test_exp(
             assert False
 
 
+def stateless_solver_no_parallelism_exp(
+    map_path,
+    agent_path,
+    n_paths,
+    temp,
+    verbose,
+    n_seconds,
+    config: parallel_lns.Configuration,
+    results_dir: Path,
+    optimal: int = 0,
+):
+    import time
+    import json
+
+    import torch
+
+    results_dir.mkdir(parents=True, exist_ok=True)
+
+    inst = instance.instance(
+        map_path,
+        agent_path,
+        n_paths=n_paths,
+        instance_name="Optimistic Iteration",
+        agent_path_temp=temp,
+        verbose=verbose,
+    )
+
+    agents = list(sorted(inst.agents.values(), key=lambda a: a.id))
+    assert config.n_agents == len(
+        agents
+    ), f"Invalid number of agents: {config.n_agents} expected {len(agents)}"
+
+    p_cmatrix = parallel_lns.build_cmatrix(agents)
+
+    table = PathTable(
+        inst.num_of_rows,
+        inst.num_of_cols,
+        inst.num_agents,
+    )
+
+    solvers.random_initial_solution(inst, table)
+    n_agents = inst.num_agents
+
+    results = []
+
+    # no threads
+    start = time.time()
+    pbar = tqdm.tqdm(range(n_seconds))
+    total = 0
+    log_t = 0
+    timestamps = []
+    iterations = []
+
+    p_solution = torch.zeros((n_agents, n_paths), dtype=torch.int8)
+    for agent in inst.agents.values():
+        p_solution[agent.id - 1][agent.path_id] = 1
+
+    p_cols = int(parallel_lns.solution_cmatrix(p_cmatrix, p_solution).sum().item() // 2)
+
+    while time.time() - start < n_seconds:
+        p_solution, p_cols = parallel_lns.run_iteration(
+            p_cmatrix,
+            p_solution,
+            p_cols,
+            config,
+        )
+        total += 1
+        timestamp = time.time()
+
+        if timestamp - start > log_t:
+            timestamps.append((timestamp - start) * 1000)
+            iterations.append(total)
+            log_t += 0.5
+
+        if p_cols <= optimal:
+            break
+
+        pbar.set_description(f"Iterations: {total} Cols: {int(p_cols)}")
+        pbar.n = timestamp - start
+        pbar.refresh()
+
+    rate = int(np.mean(np.diff(iterations) / np.diff(timestamps)) * 1000)
+    results.append((0, timestamps, iterations, rate, int(p_cols)))
+
+    print("\nNo parallelism: ", total, int(p_cols), rate)
+
+
 def stateless_solver_parallelism_exp(
     map_path,
     agent_path,
@@ -459,7 +547,7 @@ def stateless_solver_parallelism_exp(
             n_agents,
             n_paths,
             destroy_method=parallel_lns.random_destroy_method,
-            repair_method=parallel_lns.pp_repair_method,
+            repair_method=parallel_lns.pp_double_repair_method,
             neighborhood_size=subset_size,
         ),
         n_threads=n_threads,
@@ -489,6 +577,28 @@ def stateless_solver_parallelism_exp(
         (timestamps[-1]) / 1000,
         p_solution.argmax(dim=1),
     )
+
+    with (results_dir / "p_iterations_ablation_results.json").open("w") as f:
+        json_results = {
+            f"P{n_threads}": {
+                "n_threads": int(n_threads),
+                "timestamps": np.array(timestamps).tolist(),
+                "iterations": np.array(iterations).tolist(),
+                "rate": int(rate),
+                "cols": int(p_cols),
+            }
+            for n_threads, timestamps, iterations, rate, p_cols in results
+        }
+
+        json.dump(json_results, f)
+
+    plt.title("Iterations Benchmark", fontsize=16)
+    plt.xlabel("Time (ms)", fontsize=12)
+    plt.ylabel("Iterations", fontsize=12)
+    plt.grid(alpha=0.3)
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(results_dir / "no_parallelism_iterations_benchmark.png")
 
 
 def stateless_solver_parallelism_ablation_exp(

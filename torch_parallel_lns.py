@@ -115,11 +115,11 @@ def solution_cmatrix(cmatrix: CMatrix, solution: Solution) -> CMatrix:
 def total_collisions(cmatrix: CMatrix, solution: Solution) -> int:
     mask = solution.ravel().view(-1, 1).to(torch.float32)
 
-    return ((cmatrix @ mask).T @ mask).squeeze()
+    return ((cmatrix @ mask).T @ mask).squeeze() // 2
 
 
-def priority_destroy_method(
-    cmatrix: CMatrix, solution: Solution, n_paths: int, size: int
+def random_destroy_method(
+    cmatrix: CMatrix, solution: Solution, n_agents: int, n_paths: int, n_subset: int
 ) -> Neighborhood:
     return torch.randperm(n_agents, device=cmatrix.device)[:n_subset]
 
@@ -260,7 +260,8 @@ def worker(
         thread_solution = c.repair_method(
             shared_cmatrix, c.n_agents, c.n_paths, thread_solution, neighborhood
         )
-        thread_collisions = solution_cmatrix(shared_cmatrix, thread_solution).sum() // 2
+        # thread_collisions = solution_cmatrix(shared_cmatrix, thread_solution).sum() // 2
+        thread_collisions = total_collisions(shared_cmatrix, thread_solution)
 
         with lock:
             shared_iterations += 1

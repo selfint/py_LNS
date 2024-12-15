@@ -13,6 +13,7 @@ import itertools
 from visualization import visualize, draw_graph_highlight_paths
 from PathGenerator import k_shortest_paths
 import tqdm
+from pathlib import Path
 
 def run_scenario(map_path, agent_path, solver, log_file = 'experiments.csv', verbose = True, n_paths = 2, temp = 1):
     inst = instance.instance(map_path, agent_path, solver, verbose, n_paths, agent_path_temp = temp)
@@ -266,407 +267,6 @@ def optimistic_iteration_exp(
     return inst, table, results
 
 
-def matrix_solver_test_exp(
-    map_path, agent_path, n_paths, test_iterations, temp, verbose
-):
-    from MatrixPathTable import MatrixPathTable
-    import matrix_solvers
-    import copy
-    import time
-
-    def format_cmatrix_for_diff(cm: list[list[int]]) -> str:
-        return "\n".join(" ".join(f"{int(x):3}" for x in row) for row in cm)
-
-    test_iterations = 1000
-
-    subset_size = 20
-
-    inst = instance.instance(
-        map_path,
-        agent_path,
-        n_paths=n_paths,
-        instance_name="Parallel solver experiment",
-        agent_path_temp=temp,
-        verbose=verbose,
-    )
-
-    table = PathTable(
-        inst.num_of_rows,
-        inst.num_of_cols,
-        inst.num_agents,
-    )
-
-    m_inst = copy.deepcopy(inst)
-    m_table = MatrixPathTable(
-        agents = list(sorted(m_inst.agents.values(), key=lambda a: a.id))
-    )
-
-    np.random.seed(42)
-
-    solvers.random_initial_solution(inst, table)
-    for agent in inst.agents.values():
-        m_table.insert_path(agent.id, agent.path_id)
-        m_inst.agents[agent.id].path_id = agent.path_id
-
-    for agent, m_agent in zip(inst.agents.values(), m_inst.agents.values()):
-        assert (agent.id, agent.path_id) == (m_agent.id, m_agent.path_id)
-        np.testing.assert_equal(
-            agent.paths[agent.path_id], m_agent.paths[m_agent.path_id]
-        )
-
-    solver = solvers.IterativeRandomLNS(
-        inst,
-        table,
-        subset_size=subset_size,
-        num_iterations=0,
-        destroy_method_name="priority",
-        low_level_solver_name="pp",
-    )
-
-    m_solver = matrix_solvers.MatrixIterativeRandomLNS(
-        m_inst,
-        m_table,
-        subset_size=subset_size,
-        num_iterations=0,
-        destroy_method_name="priority",
-        low_level_solver_name="pp",
-        verbose=True
-    )
-
-    assert solver.num_collisions == m_solver.num_collisions, (
-        "Invalid initial collisions",
-        solver.num_collisions,
-        m_solver.num_collisions,
-    )
-
-    durations = []
-    m_durations = []
-    for iteration in tqdm.tqdm(range(test_iterations)):
-        random_state = np.random.get_state()
-
-        start = time.time()
-        solver.run_iteration()
-        duration_ms = (time.time() - start) * 1000
-
-        np.random.set_state(random_state)
-        start = time.time()
-        m_solver.run_iteration()
-        m_duration_ms = ((time.time() - start) * 1000)
-
-        durations.append(duration_ms)
-        m_durations.append(m_duration_ms)
-
-        assert solver.num_collisions == m_solver.num_collisions, (
-            solver.num_collisions, m_solver.num_collisions
-        )
-
-        for agent, m_agent in zip(inst.agents.values(), m_inst.agents.values()):
-            value = (m_agent.id, m_agent.path_id)
-            expected = (agent.id, agent.path_id)
-            assert value == expected, (value, expected)
-            np.testing.assert_equal(
-                agent.paths[agent.path_id], m_agent.paths[m_agent.path_id]
-            )
-
-        cmatrix = solver.path_table.get_collisions_matrix(inst.num_agents)
-        m_cmatrix = m_solver.path_table.get_collisions_matrix()
-
-        cmatrix = format_cmatrix_for_diff(cmatrix)
-        m_cmatrix = format_cmatrix_for_diff(m_cmatrix)
-
-        assert cmatrix == m_cmatrix
-
-
-def parallel_solver_test_exp(
-    map_path, agent_path, n_paths, test_iterations, temp, verbose, executor_name
-):
-    """
-    Test that parallel solver with parallelism=1 is identical to
-    standard solver.
-    """
-
-    import copy
-    import time
-    from PathTable import iter_edges, iter_vertices
-
-    subset_size = 20
-
-    # if too low then p_solver might not accept a solution
-    # and will cause test to fail, >100 is a good amount of iterations
-    n_iterations = 100
-
-    inst = instance.instance(
-        map_path,
-        agent_path,
-        n_paths=n_paths,
-        instance_name="Parallel solver experiment",
-        agent_path_temp=temp,
-        verbose=verbose,
-    )
-
-    table = PathTable(
-        inst.num_of_rows,
-        inst.num_of_cols,
-        inst.num_agents,
-    )
-    solvers.random_initial_solution(inst, table)
-
-    p_inst = copy.deepcopy(inst)
-    p_table = copy.deepcopy(table)
-
-    for agent, p_agent in zip(inst.agents.values(), p_inst.agents.values()):
-        assert (agent.id, agent.path_id) == (p_agent.id, p_agent.path_id)
-        np.testing.assert_equal(
-            agent.paths[agent.path_id], p_agent.paths[p_agent.path_id]
-        )
-
-    assert table.table == p_table.table
-    assert table.edges == p_table.edges
-
-    solver = solvers.IterativeRandomLNS(
-        inst,
-        table,
-        subset_size=subset_size,
-        num_iterations=n_iterations,
-        random_seed=0
-    )
-
-    p_solver = solvers.ParallelIterativeRandomLNS(
-        p_inst,
-        p_table,
-        subset_size=subset_size,
-        parallelism=1,
-        num_iterations=n_iterations,
-        executor_name=executor_name
-    )
-
-    durations = []
-    p_durations = []
-    for iteration in tqdm.tqdm(range(test_iterations)):
-        start = time.time()
-        _, solver_iterations = solver.run(early_stopping=True)
-        duration_ms = (time.time() - start) * 1000
-
-        start = time.time()
-        p_iterations = p_solver.run_iteration(do_seed=True)
-        p_duration_ms = ((time.time() - start) * 1000) / p_iterations
-
-        durations.append(duration_ms)
-        p_durations.append(p_duration_ms)
-
-        table = copy.deepcopy(solver.path_table)
-        inst = copy.deepcopy(solver.instance)
-        p_table = copy.deepcopy(p_solver.path_table)
-        p_inst = copy.deepcopy(p_solver.instance)
-
-        assert solver_iterations == p_iterations, (solver_iterations, p_iterations)
-        assert solver.num_collisions == p_solver.num_collisions, (
-            solver.num_collisions, p_solver.num_collisions
-        )
-
-        for agent, p_agent in zip(inst.agents.values(), p_inst.agents.values()):
-            value = (p_agent.id, p_agent.path_id)
-            expected = (agent.id, agent.path_id)
-            assert value == expected, (value, expected)
-            np.testing.assert_equal(
-                agent.paths[agent.path_id], p_agent.paths[p_agent.path_id]
-            )
-
-            vertices = list(iter_vertices(agent.paths[agent.path_id]))
-            edges = list(iter_edges(agent.paths[agent.path_id]))
-
-            for vertex in table.table:
-                if vertex in vertices:
-                    assert agent.id in table.table[vertex]
-                else:
-                    assert agent.id not in table.table[vertex]
-
-            for edge in table.edges:
-                if edge in edges:
-                    assert agent.id in table.edges[edge]
-                else:
-                    assert agent.id not in table.edges[edge]
-
-            for vertex in p_table.table:
-                if vertex in vertices:
-                    assert p_agent.id in p_table.table[vertex]
-                else:
-                    assert p_agent.id not in p_table.table[vertex]
-
-            for edge in p_table.edges:
-                if edge in edges:
-                    assert p_agent.id in p_table.edges[edge]
-                else:
-                    assert p_agent.id not in p_table.edges[edge]
-
-        if table.table != p_table.table:
-            keys = list(table.table.keys())
-            p_keys = list(p_table.table.keys())
-
-            diff = set(keys) ^ set(p_keys)
-
-            assert len(keys) == len(p_keys), (len(keys), len(p_keys))
-
-            for vertex in diff:
-                print(vertex in table.table, vertex in p_table.table)
-                cell = table.table[vertex]
-                p_cell = p_table.table[vertex]
-
-                assert cell == p_cell, (vertex.to_int(), cell, p_cell)
-
-                if cell != p_cell:
-                    # get difference in sets
-                    diff = cell ^ p_cell
-
-                    for agent_id in diff:
-                        path_id = inst.agents[agent_id].path_id
-                        p_path_id = p_inst.agents[agent_id].path_id
-
-                        assert path_id == p_path_id, (agent, vertex.to_int(), path_id, p_path_id)
-
-            assert table.table == p_table.table
-
-        assert table.edges == p_table.edges
-
-
-def parallelism_ablation_exp(
-    map_path,
-    agent_path,
-    n_paths,
-    n_iterations,
-    sub_iterations,
-    temp,
-    verbose,
-    results_dir,
-    executor_name,
-):
-    import time
-    from pathlib import Path
-
-    subset_size = 20
-
-    random_state = np.random.get_state()
-
-    def run_no_parallel():
-        np.random.set_state(random_state)
-
-        # run without parallelism
-        inst = instance.instance(
-            map_path,
-            agent_path,
-            n_paths=n_paths,
-            instance_name="Parallelism ablation experiment",
-            agent_path_temp=temp,
-            verbose=verbose,
-        )
-
-        table = PathTable(
-            inst.num_of_rows,
-            inst.num_of_cols,
-            inst.num_agents,
-        )
-
-        solvers.random_initial_solution(inst, table)
-        solver = solvers.IterativeRandomLNS(
-            inst,
-            table,
-            subset_size=subset_size,
-            num_iterations=sub_iterations,
-            destroy_method_name="w-random",
-        )
-
-        durations = []
-        collisions = []
-        pbar = tqdm.tqdm(range(n_iterations))
-        for iteration in pbar:
-            start = time.time()
-            _, sub_iterations_ran = solver.run(early_stopping=True)
-            duration = time.time() - start
-            duration /= sub_iterations_ran
-
-            collisions.append(solver.num_collisions)
-
-            pbar.set_description(
-                f"Parallelism: {parallelism} "
-                f"Collisions: {solver.num_collisions} "
-            )
-            duration_ms = duration * 1000
-            durations.append(duration_ms)
-
-        return durations, collisions
-
-
-    def run(parallelism: int) -> tuple[list[int], list[int]]:
-        np.random.set_state(random_state)
-
-        inst = instance.instance(
-            map_path,
-            agent_path,
-            n_paths=n_paths,
-            instance_name="Parallelism ablation experiment",
-            agent_path_temp=temp,
-            verbose=verbose,
-        )
-
-        table = PathTable(
-            inst.num_of_rows,
-            inst.num_of_cols,
-            inst.num_agents,
-        )
-
-        solvers.random_initial_solution(inst, table)
-        solver = solvers.ParallelIterativeRandomLNS(
-            inst,
-            table,
-            subset_size=subset_size,
-            parallelism=parallelism,
-            num_iterations=sub_iterations,
-            destroy_method_name="w-random",
-            executor_name=executor_name
-        )
-
-        durations = []
-        collisions = []
-        pbar = tqdm.tqdm(range(n_iterations))
-        for iteration in pbar:
-            start = time.time()
-            sub_iterations_ran = solver.run_iteration()
-            duration = time.time() - start
-            duration /= sub_iterations_ran
-
-            collisions.append(solver.num_collisions)
-
-            pbar.set_description(
-                f"Parallelism: {parallelism} "
-                f"Collisions: {solver.num_collisions} "
-            )
-
-            duration_ms = duration * 1000
-            durations.append(duration_ms)
-
-        return durations, collisions
-
-    parallelisms = list(range(0, 9))
-
-    results = []
-    for parallelism in parallelisms:
-        if parallelism == 0:
-            durations, collisions = run_no_parallel()
-        else:
-            durations, collisions = run(parallelism)
-
-        results.append((parallelism, durations, collisions))
-
-    results_dir = Path(results_dir)
-    results_dir.mkdir(parents=True, exist_ok=True)
-
-    for parallelism, durations, collisions in results:
-        with (results_dir / f"p_{parallelism}.csv").open("w") as f:
-            f.write("duration,collisions\n")
-            for duration, collision in zip(durations, collisions):
-                f.write(f"{duration},{collision}\n")
-
-
 def stateless_solver_test_exp(
     map_path, agent_path, n_paths, test_iterations, temp, verbose
 ):
@@ -745,7 +345,7 @@ def stateless_solver_test_exp(
             parallel_lns.Configuration(
                 n_agents,
                 n_paths,
-                destroy_method=parallel_lns.priority_destroy_method,
+                destroy_method=parallel_lns.random_destroy_method,
                 repair_method=parallel_lns.pp_repair_method,
                 neighborhood_size=subset_size,
             ),
@@ -782,173 +382,272 @@ def stateless_solver_test_exp(
             assert False
 
 
+def stateless_solver_parallelism_exp(
+    map_path,
+    agent_path,
+    n_paths,
+    temp,
+    verbose,
+    n_seconds,
+    n_threads,
+    results_dir: Path,
+    optimal: int = 0,
+):
+    """
+    NOTE: Uses multiprocessing, must be executed after if __name__ == "__main__"
+    """
+    import time
+    import json
+
+    import torch
+
+    import torch_parallel_lns as parallel_lns
+
+    results_dir.mkdir(parents=True, exist_ok=True)
+
+    inst = instance.instance(
+        map_path,
+        agent_path,
+        n_paths=n_paths,
+        instance_name="Optimistic Iteration",
+        agent_path_temp=temp,
+        verbose=verbose,
+    )
+
+    subset_size = 20
+
+    agents = list(sorted(inst.agents.values(), key=lambda a: a.id))
+
+    p_cmatrix = parallel_lns.build_cmatrix(agents)
+
+    table = PathTable(
+        inst.num_of_rows,
+        inst.num_of_cols,
+        inst.num_agents,
+    )
+
+    solvers.random_initial_solution(inst, table)
+    n_agents = inst.num_agents
+
+    results = []
+
+    # no threads
+    start = time.time()
+    pbar = tqdm.tqdm(range(n_seconds))
+    total = 0
+    log_t = 0
+    timestamps = []
+    iterations = []
+
+    p_solution = torch.zeros((n_agents, n_paths), dtype=torch.int8)
+    for agent in inst.agents.values():
+        p_solution[agent.id - 1][agent.path_id] = 1
+
+    p_cols = int(parallel_lns.solution_cmatrix(p_cmatrix, p_solution).sum().item() // 2)
+
+    p_solution = torch.zeros((n_agents, n_paths), dtype=torch.int8)
+    for agent in inst.agents.values():
+        p_solution[agent.id - 1][agent.path_id] = 1
+
+    p_cols = int(parallel_lns.solution_cmatrix(p_cmatrix, p_solution).sum().item() // 2)
+
+    p_solution, p_cols, timestamps, iterations = parallel_lns.run_parallel(
+        p_cmatrix,
+        p_solution,
+        p_cols,
+        c=parallel_lns.Configuration(
+            n_agents,
+            n_paths,
+            destroy_method=parallel_lns.random_destroy_method,
+            repair_method=parallel_lns.pp_repair_method,
+            neighborhood_size=subset_size,
+        ),
+        n_threads=n_threads,
+        n_seconds=n_seconds,
+        optimal=optimal,
+    )
+
+    iterations = np.array(iterations)
+    timestamps = np.array(timestamps)
+    last_zero_col_index = np.where(iterations >= n_threads)[0][0]
+
+    rate = np.round(
+        np.mean(
+            np.diff(iterations[last_zero_col_index:])
+            / np.diff(timestamps[last_zero_col_index:])
+        )
+        * 1000
+    )
+
+    results.append((n_threads, timestamps, iterations, rate, int(p_cols)))
+    print(
+        "\nParallelism: ",
+        n_threads,
+        total,
+        int(p_cols),
+        rate,
+        (timestamps[-1]) / 1000,
+        p_solution.argmax(dim=1),
+    )
+
+
 def stateless_solver_parallelism_ablation_exp(
     map_path,
     agent_path,
     n_paths,
-    n_iterations,
-    sub_iterations,
     temp,
     verbose,
-    results_dir,
+    n_seconds,
+    results_dir: Path,
 ):
+    """
+    NOTE: Uses multiprocessing, must be executed after if __name__ == "__main__"
+    """
+
     import time
-    from pathlib import Path
-    import torch_parallel_lns as parallel_lns
+    import json
+
     import torch
+
+    import torch_parallel_lns as parallel_lns
+
+    results_dir.mkdir(parents=True, exist_ok=True)
+
+    inst = instance.instance(
+        map_path,
+        agent_path,
+        n_paths=n_paths,
+        instance_name="Optimistic Iteration",
+        agent_path_temp=temp,
+        verbose=verbose,
+    )
 
     subset_size = 20
 
-    random_state = np.random.get_state()
+    agents = list(sorted(inst.agents.values(), key=lambda a: a.id))
 
-    def run_no_parallel():
-        np.random.set_state(random_state)
+    p_cmatrix = parallel_lns.build_cmatrix(agents)
 
-        # run without parallelism
-        inst = instance.instance(
-            map_path,
-            agent_path,
-            n_paths=n_paths,
-            instance_name="Optimistic Iteration",
-            agent_path_temp=temp,
-            verbose=verbose,
-        )
+    table = PathTable(
+        inst.num_of_rows,
+        inst.num_of_cols,
+        inst.num_agents,
+    )
 
-        agents = list(sorted(inst.agents.values(), key=lambda a: a.id))
-
-        device = "cpu"
-
-        p_cmatrix = parallel_lns.build_cmatrix(agents, device)
-
-        table = PathTable(
-            inst.num_of_rows,
-            inst.num_of_cols,
-            inst.num_agents,
-        )
-
-        solvers.random_initial_solution(inst, table)
-
-        n_agents = inst.num_agents
-        p_solution = torch.zeros((n_agents, n_paths), dtype=torch.int8)
-        for agent in inst.agents.values():
-            p_solution[agent.id - 1][agent.path_id] = 1
-
-        p_cols = int(
-            parallel_lns.solution_cmatrix(p_cmatrix, p_solution).sum().item() // 2
-        )
-
-        seconds = 5
-        pbar = tqdm.tqdm(range(seconds))
-        timestamps = []
-        collisions = []
-        iteration_start = time.time()
-        while time.time() - iteration_start < seconds:
-            p_solution, p_cols = parallel_lns.run_iteration(
-                p_cmatrix,
-                p_solution,
-                p_cols,
-                parallel_lns.Configuration(
-                    n_agents,
-                    n_paths,
-                    destroy_method=parallel_lns.priority_destroy_method,
-                    repair_method=parallel_lns.pp_repair_method,
-                    neighborhood_size=subset_size,
-                ),
-            )
-
-            timestamps.append(time.time() * 1000)
-
-            collisions.append(p_cols)
-            pbar.set_description(f"Collisions: {p_cols}")
-            pbar.n = time.time() - iteration_start
-            pbar.refresh()
-
-        timestamps = [t - timestamps[0] for t in timestamps]
-        return timestamps, collisions
-
-    def run(n_threads: int) -> tuple[list[int], list[int]]:
-        np.random.set_state(random_state)
-
-        inst = instance.instance(
-            map_path,
-            agent_path,
-            n_paths=n_paths,
-            instance_name="Parallelism ablation experiment",
-            agent_path_temp=temp,
-            verbose=verbose,
-        )
-
-        table = PathTable(
-            inst.num_of_rows,
-            inst.num_of_cols,
-            inst.num_agents,
-        )
-
-        agents = list(sorted(inst.agents.values(), key=lambda a: a.id))
-        p_cmatrix = parallel_lns.build_cmatrix(agents)
-
-        solvers.random_initial_solution(inst, table)
-        n_agents = inst.num_agents
-        p_solution = torch.zeros((n_agents, n_paths), dtype=torch.int8)
-        for agent in inst.agents.values():
-            p_solution[agent.id - 1][agent.path_id] = 1
-
-        p_cols = int(
-            parallel_lns.solution_cmatrix(p_cmatrix, p_solution).sum().item() // 2
-        )
-
-        all_timestamps = []
-        all_collisions = []
-        config = parallel_lns.Configuration(
-            n_agents,
-            n_paths,
-            destroy_method=parallel_lns.priority_destroy_method,
-            repair_method=parallel_lns.pp_repair_method,
-            neighborhood_size=subset_size,
-        )
-
-        seconds = 5
-        pbar = tqdm.tqdm(range(seconds))
-        iteration_start = time.time()
-        while time.time() - iteration_start < seconds:
-            p_solution, p_cols, timestamps, collisions = parallel_lns.run_parallel(
-                p_cmatrix,
-                p_solution,
-                p_cols,
-                c=config,
-                n_threads=n_threads,
-                n_sub_iterations=sub_iterations,
-            )
-
-            timestamps.append(time.time() * 1000)
-            collisions.append(p_cols)
-
-            all_timestamps.extend(timestamps)
-            all_collisions.extend(collisions)
-
-            pbar.set_description(f"Collisions: {p_cols}")
-            pbar.n = time.time() - iteration_start
-            pbar.refresh()
-
-        all_timestamps = [t - all_timestamps[0] for t in all_timestamps]
-        return all_timestamps, all_collisions
-
-    parallelisms = list(range(0, 10))
+    solvers.random_initial_solution(inst, table)
+    n_agents = inst.num_agents
 
     results = []
-    for parallelism in parallelisms:
-        if parallelism == 0:
-            durations, collisions = run_no_parallel()
-        else:
-            durations, collisions = run(parallelism)
 
-        results.append((parallelism, durations, collisions))
+    # no threads
+    start = time.time()
+    pbar = tqdm.tqdm(range(n_seconds))
+    total = 0
+    log_t = 0
+    timestamps = []
+    iterations = []
 
-    results_dir = Path(results_dir)
-    results_dir.mkdir(parents=True, exist_ok=True)
+    p_solution = torch.zeros((n_agents, n_paths), dtype=torch.int8)
+    for agent in inst.agents.values():
+        p_solution[agent.id - 1][agent.path_id] = 1
 
-    for parallelism, durations, collisions in results:
-        with (results_dir / f"p_{parallelism}.csv").open("w") as f:
-            f.write("duration,collisions\n")
-            for duration, collision in zip(durations, collisions):
-                f.write(f"{duration},{collision}\n")
+    p_cols = int(parallel_lns.solution_cmatrix(p_cmatrix, p_solution).sum().item() // 2)
+
+    while time.time() - start < n_seconds:
+        p_solution, p_cols = parallel_lns.run_iteration(
+            p_cmatrix,
+            p_solution,
+            p_cols,
+            parallel_lns.Configuration(
+                n_agents,
+                n_paths,
+                destroy_method=parallel_lns.random_destroy_method,
+                repair_method=parallel_lns.pp_repair_method,
+                neighborhood_size=subset_size,
+            ),
+        )
+        total += 1
+        timestamp = time.time()
+
+        if timestamp - start > log_t:
+            timestamps.append((timestamp - start) * 1000)
+            iterations.append(total)
+            log_t += 0.5
+
+        pbar.set_description(f"Iterations: {total} Cols: {int(p_cols)}")
+        pbar.n = timestamp - start
+        pbar.refresh()
+
+    rate = int(np.mean(np.diff(iterations) / np.diff(timestamps)) * 1000)
+    results.append((0, timestamps, iterations, rate, int(p_cols)))
+
+    print("\nNo parallelism: ", total, int(p_cols), rate)
+
+    # with threads
+    for n_threads in range(1, 11):
+        p_solution = torch.zeros((n_agents, n_paths), dtype=torch.int8)
+        for agent in inst.agents.values():
+            p_solution[agent.id - 1][agent.path_id] = 1
+
+        p_cols = int(
+            parallel_lns.solution_cmatrix(p_cmatrix, p_solution).sum().item() // 2
+        )
+
+        _, p_cols, timestamps, iterations = parallel_lns.run_parallel(
+            p_cmatrix,
+            p_solution,
+            p_cols,
+            c=parallel_lns.Configuration(
+                n_agents,
+                n_paths,
+                destroy_method=parallel_lns.random_destroy_method,
+                repair_method=parallel_lns.pp_repair_method,
+                neighborhood_size=subset_size,
+            ),
+            n_threads=n_threads,
+            n_seconds=n_seconds,
+        )
+
+        iterations = np.array(iterations)
+        timestamps = np.array(timestamps)
+        last_zero_col_index = np.where(iterations >= n_threads)[0][0]
+
+        rate = int(
+            np.mean(
+                np.diff(iterations[last_zero_col_index:])
+                / np.diff(timestamps[last_zero_col_index:])
+            )
+            * 1000
+        )
+
+        results.append((n_threads, timestamps, iterations, rate, int(p_cols)))
+        print("\nParallelism: ", n_threads, total, int(p_cols), rate)
+
+    for n_threads, timestamps, iterations, rate, p_cols in results:
+        plt.plot(
+            timestamps,
+            iterations,
+            label=f"P={n_threads} ({rate} iter/s)",
+        )
+
+    with (results_dir / "p_iterations_ablation_results.json").open("w") as f:
+        json_results = {
+            f"P{n_threads}": {
+                "n_threads": int(n_threads),
+                "timestamps": np.array(timestamps).tolist(),
+                "iterations": np.array(iterations).tolist(),
+                "rate": int(rate),
+                "cols": int(p_cols),
+            }
+            for n_threads, timestamps, iterations, rate, p_cols in results
+        }
+
+        json.dump(json_results, f)
+
+    plt.title("Parallelism Ablation", fontsize=16)
+    plt.xlabel("Time (ms)", fontsize=12)
+    plt.ylabel("Iterations", fontsize=12)
+    plt.grid(alpha=0.3)
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(results_dir / "parallelism_ablation.png")

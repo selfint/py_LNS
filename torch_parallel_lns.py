@@ -112,8 +112,14 @@ def solution_cmatrix(cmatrix: CMatrix, solution: Solution) -> CMatrix:
     return cmatrix[solution_idx][:, solution_idx]
 
 
-def random_destroy_method(
-    cmatrix: CMatrix, solution: Solution, n_agents: int, n_paths: int, n_subset: int
+def total_collisions(cmatrix: CMatrix, solution: Solution) -> int:
+    mask = solution.ravel().view(-1, 1).to(torch.float32)
+
+    return ((cmatrix @ mask).T @ mask).squeeze()
+
+
+def priority_destroy_method(
+    cmatrix: CMatrix, solution: Solution, n_paths: int, size: int
 ) -> Neighborhood:
     return torch.randperm(n_agents, device=cmatrix.device)[:n_subset]
 
@@ -143,8 +149,9 @@ def pp_repair_method(
     )
 
     for agent_id, paths in zip(neighborhood, all_paths):
-        current_idx = torch.nonzero(current_solution_flat, as_tuple=True)[0]
-        cols = cmatrix[paths][:, current_idx].sum(dim=1)
+        # current_idx = torch.nonzero(current_solution_flat, as_tuple=True)[0]
+        # cols = cmatrix[paths][:, current_idx].sum(dim=1)
+        cols = (cmatrix @ current_solution_flat.to(torch.float32)).to_dense()[paths]
         new_path_id = torch.argmin(cols)
 
         current_solution[agent_id][new_path_id] = 1
@@ -225,7 +232,8 @@ def run_iteration(
     new_solution = c.repair_method(
         cmatrix, c.n_agents, c.n_paths, solution, neighborhood
     )
-    new_collisions = solution_cmatrix(cmatrix, new_solution).sum() // 2
+    # new_collisions = solution_cmatrix(cmatrix, new_solution).sum() // 2
+    new_collisions = total_collisions(cmatrix, new_solution) // 2
 
     if new_collisions < collisions:
         return new_solution, new_collisions.item()  # type: ignore

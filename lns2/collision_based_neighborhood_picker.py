@@ -1,6 +1,6 @@
-from random import random
+import random
 from typing import List
-from numpy.random import choice
+from numpy.random import choice  # TODO convert all calls to random.choice
 import networkx as nx
 from PathTable import PathTable
 from neighborhood_picker import NeighborhoodPicker
@@ -66,21 +66,22 @@ class CollisionBasedNeighborhoodPicker(NeighborhoodPicker):
         return list(walk)
 
     def random_walk_until_colliding_with_another_agent(self, paths: dict[int, list], agent: int, A_s: list[int]) -> int:
-        paths = paths[:]  # We are going to modify the dictionary and we don't want to ruin the original
+        paths = paths.copy()  # We are going to modify the dictionary and we don't want to ruin the original
         for a_i in A_s:  # Delete all agents` paths in A_s
             if agent != a_i:
                 del paths[a_i]
 
         agent_path = [(vertex, i) for i, vertex in enumerate(paths[agent])]  # Our agent's path
         del paths[agent]  # Delete our agent's path so won't collide with itself
-        random_v, random_timestamp = choice(agent_path)  # Start the random walk from a random vertex
-        while True:
-            neighbors = self.graph.neighbors(random_v)
+        random_v, random_timestamp = random.choice(agent_path)  # Start the random walk from a random vertex
+        while True:  # TODO sometimes agent doesn't collide and therefore this loop is infinite maybe change lines 85-86
+            # so that the agents that go to the goal stays there
+            neighbors = list(self.graph.neighbors(random_v))
             if len(neighbors) >= 1:
-                random_v = choice(neighbors)
+                random_v = random.choice(neighbors)
                 random_timestamp += 1
             else:
-                random_v, random_timestamp = choice(agent_path)  # If we got stuck we restart
+                random_v, random_timestamp = random.choice(agent_path)  # If we got stuck we restart
             for agent_id, path in paths.items():  # For all agents not in A_s, check if collided with one and return it
-                if path[random_timestamp] == random_v:
+                if len(path) > random_timestamp and path[random_timestamp] == random_v:
                     return agent_id

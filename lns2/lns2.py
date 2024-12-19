@@ -105,8 +105,8 @@ class LNS2:
         # For each agent in the neighborhood, we replan their path using sipp
         for agent_id in neighborhood:
             existing_paths = {agent_id: solution[agent_id] for agent_id in solution}
-            soft_obstacles: list[tuple[int, int]] = [(v, t) for _agent_id, path in existing_paths.items() for t,v in enumerate(path)]
-            _, start, goal = self.agent_start_goal_list[agent_id]
+            soft_obstacles: list[tuple[int, int]] = [(v, t) for _agent_id, path in existing_paths.items() for t, v in enumerate(path)]
+            _, start, goal = self.agent_start_goal_list[agent_id - 1]
             agent_solution = self.sipp_pathfinding(start, goal, existing_paths, soft_obstacles, [])
             if agent_solution is None:
                 return None

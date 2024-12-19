@@ -4,7 +4,7 @@ from numpy.random import choice  # TODO convert all calls to random.choice
 import networkx as nx
 from PathTable import PathTable
 from neighborhood_picker import NeighborhoodPicker
-
+MAKESPAN = 100
 
 class CollisionBasedNeighborhoodPicker(NeighborhoodPicker):
     def __init__(self, n_size: int, graph: nx.Graph):
@@ -22,9 +22,13 @@ class CollisionBasedNeighborhoodPicker(NeighborhoodPicker):
         A_s: list[int] = []
         if connected_component.size() <= self.n_size:
             A_s.extend(connected_component.nodes)
-            while len(A_s) < self.n_size:
+            i = 0
+            while len(A_s) < self.n_size and i < 10:  # I don't know why 10, but they did it in the CPP version
                 agent = choice(A_s)
-                A_s.append(self.random_walk_until_colliding_with_another_agent(paths, agent, A_s))
+                new_agent = self.random_walk_until_colliding_with_another_agent(paths, agent, A_s)
+                if new_agent is not None:
+                    A_s.append(new_agent)
+            return A_s
         elif connected_component.size() > self.n_size:
             return self.random_walk(connected_component, random_vertex, self.n_size)
 
@@ -65,7 +69,7 @@ class CollisionBasedNeighborhoodPicker(NeighborhoodPicker):
             walk.add(current_vertex)
         return list(walk)
 
-    def random_walk_until_colliding_with_another_agent(self, paths: dict[int, list], agent: int, A_s: list[int]) -> int:
+    def random_walk_until_colliding_with_another_agent(self, paths: dict[int, list], agent: int, A_s: list[int]) -> int|None:
         paths = paths.copy()  # We are going to modify the dictionary and we don't want to ruin the original
         for a_i in A_s:  # Delete all agents` paths in A_s
             if agent != a_i:
@@ -74,7 +78,7 @@ class CollisionBasedNeighborhoodPicker(NeighborhoodPicker):
         agent_path = [(vertex, i) for i, vertex in enumerate(paths[agent])]  # Our agent's path
         del paths[agent]  # Delete our agent's path so won't collide with itself
         random_v, random_timestamp = random.choice(agent_path)  # Start the random walk from a random vertex
-        while True:  # TODO sometimes agent doesn't collide and therefore this loop is infinite maybe change lines 85-86
+        for i in range(MAKESPAN):  # TODO sometimes agent doesn't collide and therefore this loop is infinite maybe change lines 85-86
             # so that the agents that go to the goal stays there
             neighbors = list(self.graph.neighbors(random_v))
             if len(neighbors) >= 1:
@@ -85,3 +89,4 @@ class CollisionBasedNeighborhoodPicker(NeighborhoodPicker):
             for agent_id, path in paths.items():  # For all agents not in A_s, check if collided with one and return it
                 if len(path) > random_timestamp and path[random_timestamp] == random_v:
                     return agent_id
+        return None

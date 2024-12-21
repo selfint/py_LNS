@@ -107,14 +107,15 @@ class LNS2:
             existing_paths = {agent_id: solution[agent_id] for agent_id in solution}
             soft_obstacles: list[tuple[int, int]] = [(v, t) for _agent_id, path in existing_paths.items() for t, v in enumerate(path)]
             _, start, goal = self.agent_start_goal_list[agent_id - 1]
-            agent_solution = self.sipp_pathfinding(start, goal, existing_paths, soft_obstacles, [])
+            soft_edge_obstacles = [(t, (path[t], path[t+1])) for _agent_id, path in existing_paths.items() for t in range(len(path) - 1)]
+            agent_solution = self.sipp_pathfinding(start, goal, existing_paths, soft_obstacles, [], [], soft_edge_obstacles)
             if agent_solution is None:
                 return None
             new_solution[agent_id] = agent_solution
 
         return new_solution
 
-    def sipp_pathfinding(self, start, goal, existing_paths, soft_obstacles: list[tuple[int, int]], hard_obstacles: list[tuple[int, int]]):
+    def sipp_pathfinding(self, start, goal, existing_paths, soft_obstacles: list[tuple[int, int]], hard_obstacles: list[tuple[int, int]], hard_edge_obstacles: list[tuple[int, tuple[int, int]]], soft_edge_obstacles: list[tuple[int, tuple[int, int]]]):
         """
         Perform SIPP for an agent from start to goal.
         This is a by-the-book implementation as shown in the paper MAPF-LNS2.
@@ -125,6 +126,8 @@ class LNS2:
         meaning there is a soft obstacle in `vertex` at `timestamp`.
         :param hard_obstacles: A list of tuples of hard obstacles in the format of (vertex, timestamp)
         meaning there is a hard obstacle in `vertex` at `timestamp`.
+        :param soft_edge_obstacles: A list of tuples of soft edge obstacles in the format of (timestamp, (v1, v2))
+        :param hard_edge_obstacles: A list of tuples of hard edge obstacles in the format of (timestamp, (v1, v2))
         :return: A list of vertices representing the shortest path found using SIPP.
         """
         safe_intervals: SafeIntervalTable = SafeIntervalTable(list(self.graph.nodes), existing_paths, self.hard_obstacles)
@@ -151,7 +154,7 @@ class LNS2:
                 n_tag.is_goal = True
                 n_tag.c = n_tag.c + c_future
                 self.insert_node(n_tag, open_list, closed_list)
-            self.expand_node(n, open_list, closed_list, safe_intervals, soft_obstacles, hard_obstacles, goal)
+            self.expand_node(n, open_list, closed_list, safe_intervals, soft_obstacles, hard_edge_obstacles, soft_edge_obstacles, goal)
             heappush(closed_list, n)
         return None
 
@@ -190,8 +193,11 @@ class LNS2:
             if q.safe_interval.begin <= n.safe_interval.begin and q.c <= n.c:
                 return
             elif n.safe_interval.begin <= q.safe_interval.begin and n.c <= q.c:
-                open_list.remove(q)
-                closed_list.remove(q)
+                try:
+                    open_list.remove(q)
+                    closed_list.remove(q)
+                except ValueError:
+                    pass  # q is in one of those lists
             elif n.safe_interval.begin < q.safe_interval.end and q.safe_interval.begin < n.safe_interval.end:
                 if n.safe_interval.begin < q.safe_interval.begin:
                     n.safe_interval = Interval(n.safe_interval.begin, q.safe_interval.begin, "safe")
@@ -199,7 +205,11 @@ class LNS2:
                     q.safe_interval = Interval(q.safe_interval.begin, n.safe_interval.begin, "safe")
         heappush(open_list, n)
 
-    def expand_node(self, n: Node, open_list: list[Node], closed_list: list[Node], safe_intervals: SafeIntervalTable, soft_obstacles: list[tuple[int, int]], hard_obstacles: list[tuple[int, int]], goal):
+    def expand_node(self, n: Node, open_list: list[Node], closed_list: list[Node], safe_intervals: SafeIntervalTable,
+                    soft_obstacles: list[tuple[int, int]],
+                    hard_edge_obstacles: list[tuple[int, tuple[int, int]]],
+                    soft_edge_obstacles: list[tuple[int, tuple[int, int]]],
+                    goal):
         """
         Expand a node n by generating its neighbors and inserting them into the open list
         """
@@ -217,20 +227,54 @@ class LNS2:
 
         for (v, id_interval) in I:
             low, high = safe_intervals[v][id_interval].begin, safe_intervals[v][id_interval].end
-            # edge_collisions_times: list[int] = self.find_edge_collisions(n, v, soft_obstacles) #TODO deal with edge collisions
-            n3_g_val = low
-            n3_c_val = n.c + (1 if (v, low) in soft_obstacles else 0)
-            n3 = Node(vertex=v, safe_interval=Interval(low, high, "safe"), id=id_interval, is_goal=False,
-                      g=n3_g_val, h=self.heuristic(v, goal), f=n.g + 1 + self.heuristic(v, goal),
-                      c=n3_c_val, path=n.path + [v])
+            low = self.earliest_arrival_time_at_v_within_range_without_colliding_with_edge_obstacles(low, high, (n, v), hard_edge_obstacles)
+            if low is None:
+                continue
+            low_tag = self.earliest_arrival_time_at_v_within_range_without_colliding_with_edge_obstacles(low, high, (n, v), soft_edge_obstacles + hard_edge_obstacles)
+            if low_tag is not None and low_tag > low:
+                n1_g_val = low
+                n1_c_val = n.c + (1 if (v, low) in soft_obstacles else 0) + (1 if (low, (n.vertex, v)) in soft_edge_obstacles else 0)
+                n1 = Node(vertex=v, safe_interval=Interval(low, low_tag, "safe"), id=id_interval, is_goal=False,
+                          g=n1_g_val, h=self.heuristic(v, goal), f=n.g + self.heuristic(v, goal),
+                          c=n1_c_val, path=n.path + [v])
+                self.insert_node(n1, open_list, closed_list)
+                n2_g_val = low
+                n2_c_val = n.c + (1 if (v, low) in soft_obstacles else 0) + (1 if (low, (n.vertex, v)) in soft_edge_obstacles else 0)
+                n2 = Node(vertex=v, safe_interval=Interval(low_tag, high, "safe"), id=id_interval, is_goal=False,
+                          g=n2_g_val, h=self.heuristic(v, goal), f=n.g + self.heuristic(v, goal),
+                          c=n2_c_val, path=n.path + [v])
+                self.insert_node(n2, open_list, closed_list)
+            else:
+                n3_g_val = low
+                n3_c_val = n.c + (1 if (v, low) in soft_obstacles else 0) + (1 if (low, (n.vertex, v)) in soft_edge_obstacles else 0)
+                n3 = Node(vertex=v, safe_interval=Interval(low, high, "safe"), id=id_interval, is_goal=False,
+                          g=n3_g_val, h=self.heuristic(v, goal), f=n.g + self.heuristic(v, goal),
+                          c=n3_c_val, path=n.path + [v])
 
-            self.insert_node(n3, open_list, closed_list)
+                self.insert_node(n3, open_list, closed_list)  # TODO currently there is a bug when running the program, try to compare to the version where you don't have edge collisions
 
-    def find_edge_collisions(self, n, v, obstacles):
-        # for i, (obstacle, time) in enumerate(obstacles):
-        #     if obstacle == v and obstacles[i+1][0] == :
-        pass  #TODO how do i know to detect an edge collision? I don't know if the obstacle "is going" fron v to n
-        # or its just that there is another obstacle at v at the same time as n
-
-
+    def earliest_arrival_time_at_v_within_range_without_colliding_with_edge_obstacles(self, low, high, edge,
+                                                                                           edge_obstacles):
+        """
+        I know the name is long but this word by word from the paper
+        Args:
+            low: lower bound
+            high: upper bound
+            edge: tuple of (v1, v2) representing the edge
+            edge_obstacles: list of hard edge obstacles in the format of (timestamp, (v1, v2))
+            meaning there is a hard edge obstacle that goes from v1 to v2 starting from `timestamp` at v1
+            and ending at `timestamp` + 1 at v2
+        Returns: The earliest arrival time at v within the range [low, high] without colliding with hard edge obstacles
+        """
+        n, v = edge
+        times_of_edge_being_used = sorted([t for t, (v1, v2) in edge_obstacles if v1 == n and v2 == v])
+        if not times_of_edge_being_used:
+            return low
+        for t in times_of_edge_being_used:
+            if low > high:
+                return None
+            if low == t:
+                low += 1
+            else:
+                return low
 

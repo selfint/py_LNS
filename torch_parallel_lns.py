@@ -118,6 +118,15 @@ def random_destroy_method(
     return torch.randperm(n_agents, device=cmatrix.device)[:n_subset]
 
 
+def argmax_destroy_method(
+    cmatrix: CMatrix, solution: Solution, n_agents: int, n_paths: int, n_subset: int
+) -> Neighborhood:
+    """Return agents with the most collisions"""
+    sol_cmatrix = solution_cmatrix(cmatrix, solution)
+
+    return torch.topk(sol_cmatrix.sum(dim=1), n_subset)[1]
+
+
 # @benchmark(n=10_000)
 def pp_repair_method(
     cmatrix: CMatrix,

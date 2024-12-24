@@ -467,7 +467,7 @@ def stateless_solver_no_parallelism_exp(
     rate = int(np.mean(np.diff(iterations) / np.diff(timestamps)) * 1000)
     results.append((0, timestamps, iterations, rate, int(p_cols)))
 
-    print("\nNo parallelism: ", total, int(p_cols), rate)
+    print(f"\nNo parallelism: {total}, {p_cols=}, {rate=}")
 
 
 def stateless_solver_parallelism_exp(
@@ -565,13 +565,8 @@ def stateless_solver_parallelism_exp(
 
     results.append((n_threads, timestamps, iterations, rate, int(p_cols)))
     print(
-        "\nParallelism: ",
-        n_threads,
-        total,
-        int(p_cols),
-        rate,
-        (timestamps[-1]) / 1000,
-        p_solution.argmax(dim=1),
+        f"\nParallelism: n_threads={n_threads}, total={total}, p_cols={int(p_cols)}, "
+        f"rate={rate}, time_elapsed={(timestamps[-1]) / 1000}, p_solution={p_solution.argmax(dim=1)}"
     )
 
     with (results_dir / "p_iterations_ablation_results.json").open("w") as f:

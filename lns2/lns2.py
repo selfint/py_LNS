@@ -1,15 +1,95 @@
 import copy
+import time
 from heapq import heappush, heappop
 import networkx as nx
 from intervaltree import Interval
 from adaptive_lns_neighborhood_picker import AdaptiveLNSNeighborhoodPicker
 from node import Node
 from safe_interval_table import SafeIntervalTable
+from enum import Enum     # for enum34, or the stdlib version
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+import numpy as np
+# from aenum import Enum  # for the aenum version
+
+Strategy = Enum('strategy', 'PP AStar')
+
+import matplotlib.pyplot as plt
+import numpy as np
+
+
+def animate_paths(grid_size, paths, index):
+    """
+    Animates the paths of agents on a grid.
+
+    :param grid_size: Tuple of grid dimensions (rows, cols).
+    :param paths: Dictionary where keys are agent IDs and values are lists of (x, y) tuples representing paths.
+    """
+    # Grid setup
+    rows, cols = grid_size
+    fig, ax = plt.subplots(figsize=(8, 8))
+    ax.set_xlim(0, cols)
+    ax.set_ylim(0, rows)
+    ax.set_xticks(np.arange(0, cols + 1, 1))
+    ax.set_yticks(np.arange(0, rows + 1, 1))
+    ax.grid(color='black', linestyle='--', linewidth=0.5)
+    ax.set_aspect('equal', adjustable='box')
+    ax.set_yticklabels(np.arange(rows, -1, -1))
+    plt.gca().invert_yaxis()  # Match grid coordinates
+
+    # Colors for agents
+    colors = ['red', 'blue', 'green', 'orange', 'purple', 'cyan', 'magenta']
+    max_steps = max(len(path) for path in paths.values())
+
+    # Initialize plot elements for agents
+    agent_lines = []
+    agent_points = []
+    for i, (agent, path) in enumerate(paths.items()):
+        color = colors[i % len(colors)]
+        line, = ax.plot([], [], color=color, lw=2, label=f'Agent {agent} ({color})')
+        point, = ax.plot([], [], marker='o', color=color, markersize=8)
+        agent_lines.append(line)
+        agent_points.append(point)
+
+    def init():
+        """Initialize plot elements."""
+        for line in agent_lines:
+            line.set_data([], [])
+        for point in agent_points:
+            point.set_data([], [])
+        return agent_lines + agent_points
+
+    def update(frame):
+        """Update plot elements at each frame."""
+        for i, (agent, path) in enumerate(paths.items()):
+            if frame < len(path):
+                # Extract path up to the current frame
+                x_coords = [p[1] for p in path[:frame + 1]]
+                y_coords = [rows - p[0] for p in path[:frame + 1]]  # Flip y-coordinates for grid
+                agent_lines[i].set_data(x_coords, y_coords)  # Update line
+                agent_points[i].set_data(x_coords[-1:], y_coords[-1:])  # Update current position
+        return agent_lines + agent_points
+
+    ani = animation.FuncAnimation(
+        fig, update, frames=max_steps, init_func=init, interval=500, blit=False, repeat=False
+    )
+    ani.save(f'agent_paths{index}.gif', writer='pillow')
+    ax.legend(
+        [line for line in agent_lines],  # Reference the line objects for each agent
+        [f'Agent {i + 1} ({colors[i % len(colors)]})' for i in range(len(paths))],  # Create labels with color
+        loc='upper left', fontsize='small', title="Agent Colors"
+    )
+    # Add legend and show plot
+    ax.legend()
+    plt.title("Agent Path Progression")
+    plt.xlabel("Columns")
+    plt.ylabel("Rows")
+    plt.show()
 
 
 class LNS2:
-    MAX_ITERATIONS = 1000
-    NEIGHBORHOOD_SIZE = 10
+    MAX_ITERATIONS = 10000000  # TODO refactor for time limit of 1 minute
+    NEIGHBORHOOD_SIZE = 4
 
     def __init__(self, graph: nx.Graph, agent_start_goal_list: list[(int, int, int)],
                  hard_obstacles: list[tuple[int, int]]):
@@ -25,34 +105,48 @@ class LNS2:
         """
         # Init vars
         self.graph = graph
-        self.agent_start_goal_list = agent_start_goal_list
+        self.agent_start_goal_dict = {agent_id: (start, goal) for agent_id, start, goal in agent_start_goal_list}
         self.hard_obstacles = hard_obstacles
         self.neighborhood_picker: AdaptiveLNSNeighborhoodPicker = AdaptiveLNSNeighborhoodPicker(self.NEIGHBORHOOD_SIZE, gamma=0.1, graph=graph)
 
         # Starting the algorithm
-        solution = self.init_initial_solution()  # TODO change to prioritize planning? where in the article
-                                                #  they say what to do?
+        solution = self.init_initial_solution()
+        animate_paths((32, 32), solution, 0)
         for i in range(self.MAX_ITERATIONS):
-            print(f"iteration {i}")
-            old_solution = copy.deepcopy(solution)
+            old_solution = copy.copy(solution)
             neighborhood = self.neighborhood_picker.pick(solution)
+            print(f"picked {neighborhood}")
             for agent_id in neighborhood:
                 del solution[agent_id]
-            new_solution = self.construct_new_solution(neighborhood, solution)  # TODO what do we do if there is no solution
+            t = time.time()
+            new_solution = self.construct_new_solution(neighborhood, solution)
             if new_solution is None:  # if we didn't find solution, try again
                 solution = old_solution
                 continue
-            self.neighborhood_picker.update(self.num_of_colliding_pairs(old_solution) - self.num_of_colliding_pairs(new_solution))
-            if self.num_of_colliding_pairs(new_solution) < self.num_of_colliding_pairs(old_solution):
+            old_collisions = self.num_of_colliding_pairs(old_solution)
+            new_collisions = self.num_of_colliding_pairs(new_solution)
+            if new_collisions == 0:
+                print(f"found solution with 0 collisions {new_collisions}")
+                animate_paths((32, 32), new_solution, i)
+                return
+            self.neighborhood_picker.update(old_collisions - new_collisions)
+            if new_collisions < old_collisions:
                 solution = new_solution
+                print(f"found better solutions with num of colliding pairs {new_collisions} collsions in iterataion {i}")
+                animate_paths((32, 32),solution, i)
             else:
+                if i % 1000 == 0:
+                    print(f"iteration {i}")
                 solution = old_solution
 
-    def init_initial_solution(self):
-        solutions_dict = dict()
-        for agent_id, start, goal in self.agent_start_goal_list:
-            solutions_dict[agent_id] = self.shortest_solution(start, goal)
-        return solutions_dict
+    def init_initial_solution(self, strategy=Strategy.PP):
+        if strategy == Strategy.PP:
+            return self.construct_new_solution(self.agent_start_goal_dict.keys(), dict())
+        elif strategy == Strategy.AStar:
+            solutions_dict = dict()
+            for agent_id, start, goal in self.agent_start_goal_list:
+                solutions_dict[agent_id] = self.shortest_solution(start, goal)
+            return solutions_dict
 
     def shortest_solution(self, start, goal):
         """
@@ -104,18 +198,18 @@ class LNS2:
         # Existing paths are used as soft obstacles
         # For each agent in the neighborhood, we replan their path using sipp
         for agent_id in neighborhood:
-            existing_paths = {agent_id: solution[agent_id] for agent_id in solution}
+            existing_paths = {agent_id: new_solution[agent_id] for agent_id in new_solution}
             soft_obstacles: list[tuple[int, int]] = [(v, t) for _agent_id, path in existing_paths.items() for t, v in enumerate(path)]
-            _, start, goal = self.agent_start_goal_list[agent_id - 1]
+            start, goal = self.agent_start_goal_dict[agent_id]
             soft_edge_obstacles = [(t, (path[t], path[t+1])) for _agent_id, path in existing_paths.items() for t in range(len(path) - 1)]
-            agent_solution = self.sipp_pathfinding(start, goal, existing_paths, soft_obstacles, [], [], soft_edge_obstacles)
+            agent_solution = self.sipp_pathfinding(start, goal, soft_obstacles, [], [], soft_edge_obstacles)
             if agent_solution is None:
                 return None
             new_solution[agent_id] = agent_solution
 
         return new_solution
 
-    def sipp_pathfinding(self, start, goal, existing_paths, soft_obstacles: list[tuple[int, int]], hard_obstacles: list[tuple[int, int]], hard_edge_obstacles: list[tuple[int, tuple[int, int]]], soft_edge_obstacles: list[tuple[int, tuple[int, int]]]):
+    def sipp_pathfinding(self, start, goal, soft_obstacles: list[tuple[int, int]], hard_obstacles: list[tuple[int, int]], hard_edge_obstacles: list[tuple[int, tuple[int, int]]], soft_edge_obstacles: list[tuple[int, tuple[int, int]]]):
         """
         Perform SIPP for an agent from start to goal.
         This is a by-the-book implementation as shown in the paper MAPF-LNS2.
@@ -130,7 +224,7 @@ class LNS2:
         :param hard_edge_obstacles: A list of tuples of hard edge obstacles in the format of (timestamp, (v1, v2))
         :return: A list of vertices representing the shortest path found using SIPP.
         """
-        safe_intervals: SafeIntervalTable = SafeIntervalTable(list(self.graph.nodes), existing_paths, self.hard_obstacles)
+        safe_intervals: SafeIntervalTable = SafeIntervalTable(list(self.graph.nodes), soft_obstacles, self.hard_obstacles)
         root: Node = Node(vertex=start, safe_interval=safe_intervals[start][0], id=0, is_goal=False,
                     g=0,
                     h=self.heuristic(start, goal),
@@ -233,20 +327,20 @@ class LNS2:
             low_tag = self.earliest_arrival_time_at_v_within_range_without_colliding_with_edge_obstacles(low, high, (n, v), soft_edge_obstacles + hard_edge_obstacles)
             if low_tag is not None and low_tag > low:
                 n1_g_val = low
-                n1_c_val = n.c + (1 if (v, low) in soft_obstacles else 0) + (1 if (low, (n.vertex, v)) in soft_edge_obstacles else 0)
+                n1_c_val = n.c + (1 if  self.safe_interval_contains_soft_obstacles(v, low, high, soft_obstacles) else 0) + (1 if (low, (n.vertex, v)) in soft_edge_obstacles else 0)
                 n1 = Node(vertex=v, safe_interval=Interval(low, low_tag, "safe"), id=id_interval, is_goal=False,
                           g=n1_g_val, h=self.heuristic(v, goal), f=n.g + self.heuristic(v, goal),
                           c=n1_c_val, path=n.path + [v])
                 self.insert_node(n1, open_list, closed_list)
                 n2_g_val = low
-                n2_c_val = n.c + (1 if (v, low) in soft_obstacles else 0) + (1 if (low, (n.vertex, v)) in soft_edge_obstacles else 0)
+                n2_c_val = n.c + (1 if self.safe_interval_contains_soft_obstacles(v, low, high, soft_obstacles) else 0) + (1 if (low, (n.vertex, v)) in soft_edge_obstacles else 0)
                 n2 = Node(vertex=v, safe_interval=Interval(low_tag, high, "safe"), id=id_interval, is_goal=False,
                           g=n2_g_val, h=self.heuristic(v, goal), f=n.g + self.heuristic(v, goal),
                           c=n2_c_val, path=n.path + [v])
                 self.insert_node(n2, open_list, closed_list)
             else:
                 n3_g_val = low
-                n3_c_val = n.c + (1 if (v, low) in soft_obstacles else 0) + (1 if (low, (n.vertex, v)) in soft_edge_obstacles else 0)
+                n3_c_val = n.c + (1 if self.safe_interval_contains_soft_obstacles(v, low, high, soft_obstacles) else 0) + (1 if (low, (n.vertex, v)) in soft_edge_obstacles else 0)
                 n3 = Node(vertex=v, safe_interval=Interval(low, high, "safe"), id=id_interval, is_goal=False,
                           g=n3_g_val, h=self.heuristic(v, goal), f=n.g + self.heuristic(v, goal),
                           c=n3_c_val, path=n.path + [v])
@@ -278,3 +372,17 @@ class LNS2:
             else:
                 return low
 
+    def safe_interval_contains_soft_obstacles(self, vertex, low, high, soft_obstacles):
+        times_of_obstacles_in_t = [t for v, t in soft_obstacles if v == vertex]
+        if not times_of_obstacles_in_t:
+            return False
+        max_timestamp = max(times_of_obstacles_in_t)
+        for i in range(int(low), min(high, max_timestamp) + 1):
+            if (vertex, i) in soft_obstacles:
+                return True
+        return False
+
+
+# for scen-randon we got
+# iteration 161
+# found better solutions with self.num_of_colliding_pairs 1331.0 collsions

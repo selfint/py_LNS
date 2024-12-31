@@ -4,7 +4,9 @@ from collision_based_neighborhood_picker import CollisionBasedNeighborhoodPicker
 from failure_based_neighborhood_picker import FailureBasedNeighborhoodPicker
 from neighborhood_picker import NeighborhoodPicker
 from numpy.random import choice
-
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+import numpy as np
 from random_neighborhood_picker import RandomNeighborhoodPicker
 
 
@@ -21,7 +23,8 @@ class AdaptiveLNSNeighborhoodPicker(NeighborhoodPicker):
     def pick(self, paths: dict[int, list[int]]):
         weights = [self.weights[i]/sum(self.weights) for i in range(len(self.weights))]
         self.current_picker_index: int = choice(list(range(len(self.neighborhood_pickers))), 1, p=weights)[0]
-        return self.neighborhood_pickers[self.current_picker_index].pick(paths)
+        print(f"used {self.current_picker_index}")
+        return self.neighborhood_pickers[1].pick(paths)
 
     def update(self, cp_diff: int):
         """

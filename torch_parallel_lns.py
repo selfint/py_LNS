@@ -29,6 +29,15 @@ Neighborhood = torch.Tensor
 """Vector of size (subset_size) specifying agent ids in a neighborhood"""
 
 
+def random_initial_solution(n_agents: int, n_paths: int) -> Solution:
+    sol = torch.zeros((n_agents, n_paths), dtype=torch.int8)
+    paths = torch.randint(0, n_paths, (n_agents,))
+    for agent_id, path in enumerate(paths):
+        sol[agent_id][path] = 1
+
+    return sol
+
+
 class DestroyMethod(Protocol):
 
     def __call__(
@@ -127,7 +136,6 @@ def argmax_destroy_method(
     return torch.topk(sol_cmatrix.sum(dim=1), n_subset)[1]
 
 
-# @benchmark(n=10_000)
 def pp_repair_method(
     cmatrix: CMatrix,
     n_agents: int,
@@ -300,7 +308,7 @@ def run_parallel(
     c: Configuration,
     n_threads: int,
     n_seconds: int,
-    optimal: int = 0,
+    optimal: int | None = None,
 ) -> tuple[Solution, int, list[float], list[int]]:
 
     shared_cmatrix = cmatrix.share_memory_()
@@ -327,33 +335,33 @@ def run_parallel(
         workers.append(p)
         p.start()
 
-    # while workers working
     start = time.time()
     log_values = []
+    sample_rate = 10 / 1_000  # 10 ms
     with tqdm(total=n_seconds) as pbar:
         while time.time() - start < n_seconds:
             with lock:
                 iterations = shared_iterations.item()
                 cols = int(shared_collisions.item())
 
-            log_values.append((((time.time() - start) * 1_000, iterations)))
+            log_values.append((((time.time() - start) * 1_000, cols)))
             pbar.set_description(
-                f"P {n_threads: 2} Iterations: {iterations} Cols: {cols}"
+                f"Agents: {c.n_agents: 2} Iterations: {iterations} Cols: {cols}"
             )
 
-            if cols <= optimal:
+            if optimal is not None and cols <= optimal:
                 break
 
-            time.sleep(0.5)
-            pbar.update(0.5)
+            time.sleep(sample_rate)
+            pbar.update(sample_rate)
 
     for p in workers:
         p.kill()
         p.join()
 
     timestamps_ms = [t for t, _ in log_values]
-    iterations = [c for _, c in log_values]
+    log_collisions = [c for _, c in log_values]
 
     sol = shared_solution.argmax(dim=1)
 
-    return shared_solution, int(shared_collisions.item()), timestamps_ms, iterations
+    return shared_solution, int(shared_collisions.item()), timestamps_ms, log_collisions

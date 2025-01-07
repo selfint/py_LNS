@@ -802,73 +802,66 @@ def collisions_by_ms_aggregate_exp(
     n_seconds: int,
     n_threads: int,
 ):
-    import time
     import json
-
-    import torch
-
     import torch_parallel_lns as parallel_lns
 
-    pbar = tqdm.tqdm(total=len(list(scenarios.glob("**/*.path"))))
     for old_result in scenarios.glob("**/*.results"):
         old_result.unlink(missing_ok=True)
 
-    for agent_dir in scenarios.iterdir():
-        for path_file in agent_dir.glob("*.path"):
-            pbar.set_description(f"{agent_dir.name}/{path_file.name}")
-            agent_paths = json.loads(path_file.read_text())
-            agents = []
-            for i, paths in enumerate(agent_paths):
-                agent = Agent(
-                    instance=None,
-                    agent_id=i + 1,
-                    start_loc=paths[0][0],
-                    end_loc=paths[0][-1],
-                    n_paths=len(paths),
-                )
-                agent.paths = paths
-                agents.append(agent)
-
-            n_agents = len(agents)
-            n_paths = agents[0].n_paths
-            neighborhood_size = 20
-            config = parallel_lns.Configuration(
-                n_agents=n_agents,
-                n_paths=n_paths,
-                destroy_method=[parallel_lns.random_destroy_method],
-                repair_method=[parallel_lns.pp_repair_method],
-                neighborhood_size=neighborhood_size,
-                # simulated_annealing=(0.5, 1, 500_000),
+    pbar = tqdm.tqdm(scenarios.glob("**/*.path"))
+    for path_file in pbar:
+        pbar.set_description(f"{path_file.parent}/{path_file.name}")
+        agent_paths = json.loads(path_file.read_text())
+        agents = []
+        for i, paths in enumerate(agent_paths):
+            agent = Agent(
+                instance=None,
+                agent_id=i + 1,
+                start_loc=paths[0][0],
+                end_loc=paths[0][-1],
+                n_paths=len(paths),
             )
+            agent.paths = paths
+            agents.append(agent)
 
-            cmatrix = parallel_lns.build_cmatrix(agents)
-            solution = parallel_lns.random_initial_solution(n_agents, n_paths)
-            sol_cmatrix = parallel_lns.solution_cmatrix(cmatrix, solution)
-            initial_collisions = int(sol_cmatrix.sum() // 2)
+        n_agents = len(agents)
+        n_paths = agents[0].n_paths
+        neighborhood_size = 20
+        config = parallel_lns.Configuration(
+            n_agents=n_agents,
+            n_paths=n_paths,
+            destroy_method=[parallel_lns.random_destroy_method],
+            repair_method=[parallel_lns.pp_repair_method],
+            neighborhood_size=neighborhood_size,
+            # simulated_annealing=(0.5, 1, 500_000),
+        )
 
-            _, final_collisions, timestamps, collisions = parallel_lns.run_parallel(
-                cmatrix,
-                solution,
-                initial_collisions,
-                config,
-                n_threads,
-                n_seconds,
+        cmatrix = parallel_lns.build_cmatrix(agents)
+        solution = parallel_lns.random_initial_solution(n_agents, n_paths)
+        sol_cmatrix = parallel_lns.solution_cmatrix(cmatrix, solution)
+        initial_collisions = int(sol_cmatrix.sum() // 2)
+
+        _, final_collisions, timestamps, collisions = parallel_lns.run_parallel(
+            cmatrix,
+            solution,
+            initial_collisions,
+            config,
+            n_threads,
+            n_seconds,
+        )
+
+        results_file = path_file.with_suffix(".results")
+        results_file.write_text(
+            json.dumps(
+                {
+                    "timestamps": np.array(timestamps).tolist(),
+                    "collisions": np.array(collisions).tolist(),
+                    "initial_collisions": int(initial_collisions),
+                    "final_collisions": int(final_collisions),
+                    "n_threads": int(n_threads),
+                    "n_agents": int(n_agents),
+                    "n_paths": int(n_paths),
+                    "neighborhood_size": int(neighborhood_size),
+                }
             )
-
-            results_file = path_file.with_suffix(".results")
-            results_file.write_text(
-                json.dumps(
-                    {
-                        "timestamps": np.array(timestamps).tolist(),
-                        "collisions": np.array(collisions).tolist(),
-                        "initial_collisions": int(initial_collisions),
-                        "final_collisions": int(final_collisions),
-                        "n_threads": int(n_threads),
-                        "n_agents": int(n_agents),
-                        "n_paths": int(n_paths),
-                        "neighborhood_size": int(neighborhood_size),
-                    }
-                )
-            )
-
-            pbar.update(1)
+        )

@@ -33,8 +33,6 @@ def main(map_file: Path, num_agents: int, output_file: Path) -> None:
         ends.append(end)
     ends = np.array(ends)
 
-    assert len(set(starts)) == num_agents
-    assert len(set(ends)) == num_agents
     assert not any(starts[i] == ends[i] for i in range(num_agents))
 
     start_points = points[starts]
@@ -42,6 +40,10 @@ def main(map_file: Path, num_agents: int, output_file: Path) -> None:
 
     agent_lines = []
     for (sx, sy), (ex, ey) in zip(start_points, end_points):
+        # assert start and end are points in graph
+        assert (sx, sy) in map_graph.nodes
+        assert (ex, ey) in map_graph.nodes
+
         line = [0, map_file.name, num_of_rows, num_of_cols, sx, sy, ex, ey, 1.0]
         agent_lines.append(line)
 

@@ -339,7 +339,7 @@ def run_parallel(
     log_values = []
     sample_rate = 10 / 1_000  # 10 ms
     with tqdm(total=n_seconds) as pbar:
-        while time.time() - start < n_seconds:
+        while (time_passed := time.time() - start) < n_seconds:
             with lock:
                 iterations = shared_iterations.item()
                 cols = int(shared_collisions.item())
@@ -353,7 +353,7 @@ def run_parallel(
                 break
 
             time.sleep(sample_rate)
-            pbar.update(sample_rate)
+            pbar.update(round(time_passed - pbar.n))
 
     for p in workers:
         p.kill()

@@ -15,6 +15,7 @@ class Node:
     c: int
     path: list[int]
     _priority: tuple[int, int] = None
+    who_expanded_me: int = None
 
     def __post_init__(self):
         # Comparing c and then f

@@ -24,7 +24,7 @@ class AdaptiveLNSNeighborhoodPicker(NeighborhoodPicker):
         weights = [self.weights[i]/sum(self.weights) for i in range(len(self.weights))]
         self.current_picker_index: int = choice(list(range(len(self.neighborhood_pickers))), 1, p=weights)[0]
         print(f"used {self.current_picker_index}")
-        return self.neighborhood_pickers[1].pick(paths)
+        return self.neighborhood_pickers[self.current_picker_index].pick(paths)
 
     def update(self, cp_diff: int):
         """

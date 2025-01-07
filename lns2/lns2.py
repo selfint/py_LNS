@@ -1,16 +1,12 @@
 import copy
-import time
 from heapq import heappush, heappop
 import networkx as nx
 from intervaltree import Interval
 from adaptive_lns_neighborhood_picker import AdaptiveLNSNeighborhoodPicker
 from node import Node
 from safe_interval_table import SafeIntervalTable
-from enum import Enum     # for enum34, or the stdlib version
-import matplotlib.pyplot as plt
+from enum import Enum
 import matplotlib.animation as animation
-import numpy as np
-# from aenum import Enum  # for the aenum version
 
 Strategy = Enum('strategy', 'PP AStar')
 
@@ -89,7 +85,7 @@ def animate_paths(grid_size, paths, index):
 
 class LNS2:
     MAX_ITERATIONS = 10000000  # TODO refactor for time limit of 1 minute
-    NEIGHBORHOOD_SIZE = 4
+    NEIGHBORHOOD_SIZE = 8
 
     def __init__(self, graph: nx.Graph, agent_start_goal_list: list[(int, int, int)],
                  hard_obstacles: list[tuple[int, int]]):
@@ -111,14 +107,16 @@ class LNS2:
 
         # Starting the algorithm
         solution = self.init_initial_solution()
-        animate_paths((32, 32), solution, 0)
+        if self.num_of_colliding_pairs(solution) == 0:
+            print("found solution with 0 collisions at initial solution (iteration 0)")
+            animate_paths((32, 32), solution, 0)
+            return
         for i in range(self.MAX_ITERATIONS):
             old_solution = copy.copy(solution)
             neighborhood = self.neighborhood_picker.pick(solution)
             print(f"picked {neighborhood}")
             for agent_id in neighborhood:
                 del solution[agent_id]
-            t = time.time()
             new_solution = self.construct_new_solution(neighborhood, solution)
             if new_solution is None:  # if we didn't find solution, try again
                 solution = old_solution
@@ -126,18 +124,31 @@ class LNS2:
             old_collisions = self.num_of_colliding_pairs(old_solution)
             new_collisions = self.num_of_colliding_pairs(new_solution)
             if new_collisions == 0:
-                print(f"found solution with 0 collisions {new_collisions}")
+                print(f"found solution with 0 collisions {new_collisions} after {i} iterations")
                 animate_paths((32, 32), new_solution, i)
                 return
             self.neighborhood_picker.update(old_collisions - new_collisions)
             if new_collisions < old_collisions:
                 solution = new_solution
-                print(f"found better solutions with num of colliding pairs {new_collisions} collsions in iterataion {i}")
-                animate_paths((32, 32),solution, i)
+                print(f"found better solutions with num of colliding pairs {new_collisions} collsions in iterataion {i}\n\n{solution}")
+                animate_paths((32, 32), solution, i)
             else:
                 if i % 1000 == 0:
                     print(f"iteration {i}")
                 solution = old_solution
+
+    def find_non_colliding_solution_with_a_star(self):
+        hard_obstacles = []
+        edge_obstacles = []
+        agents_paths = dict()
+        for agent_id in self.agent_start_goal_dict.keys():
+            start, goal = self.agent_start_goal_dict[agent_id]
+            agents_paths[agent_id] = self.shortest_solution(start, goal, hard_obstacles, edge_obstacles)
+            edge_obstacles.extend([((agents_paths[agent_id][t], t), (agents_paths[agent_id][t+1], t+1)) for t in range(len(agents_paths[agent_id]) - 1)])
+            hard_obstacles.extend([(v, t) for t, v in enumerate(agents_paths[agent_id])])
+        print(f"found solution with {self.num_of_colliding_pairs(agents_paths)} collisions")
+        animate_paths((32, 32), agents_paths, 99999)
+
 
     def init_initial_solution(self, strategy=Strategy.PP):
         if strategy == Strategy.PP:
@@ -148,7 +159,7 @@ class LNS2:
                 solutions_dict[agent_id] = self.shortest_solution(start, goal)
             return solutions_dict
 
-    def shortest_solution(self, start, goal):
+    def shortest_solution(self, start, goal, hard_obstacles=None, edge_obstacles=None):
         """
         Find the shortest path from start to goal avoiding hard obstacles.
         This is basically an A* implementation.
@@ -177,8 +188,10 @@ class LNS2:
             # Explore neighbors
             for neighbor in self.graph.neighbors(current_vertex):
                 next_time = current_time + 1
-                if (neighbor, next_time) in self.hard_obstacles:
+                if (neighbor, next_time) in hard_obstacles:
                     continue  # Skip hard obstacles
+                if ((neighbor, current_time), (current_vertex, current_time+1)) in edge_obstacles:
+                    continue  # Skip edge obstacles
                 if (neighbor, next_time) not in visited:
                     cost = len(new_path) + self.heuristic(neighbor, goal)
                     heappush(open_set, (cost, neighbor, next_time, new_path))
@@ -239,11 +252,11 @@ class LNS2:
         while open_list:
             n: Node = heappop(open_list)
             if n.is_goal:
-                return n.path
+                return self.extract_path(n)
             if n.vertex == goal and n.safe_interval.begin >= T:
-                c_future = len([(g, t) for g, t in soft_obstacles if t > T])
+                c_future = len([(g, t) for g, t in soft_obstacles if t > n.safe_interval.begin and g == goal])
                 if c_future == 0:
-                    return n.path
+                    return self.extract_path(n)
                 n_tag: Node = copy.deepcopy(n)
                 n_tag.is_goal = True
                 n_tag.c = n_tag.c + c_future
@@ -275,6 +288,11 @@ class LNS2:
                     continue
                 for i in range(min(len(path), len(path2))):
                     if path[i] == path2[i]:
+                        collisions += 1
+                        break
+                # detect edge collisions:
+                for i in range(min(len(path), len(path2)) - 1):
+                    if path[i] == path2[i+1] and path[i+1] == path2[i]:
                         collisions += 1
                         break
         return collisions / 2
@@ -320,32 +338,32 @@ class LNS2:
         assert k <= 1  # The if statement runs at most once
 
         for (v, id_interval) in I:
-            low, high = safe_intervals[v][id_interval].begin, safe_intervals[v][id_interval].end
-            low = self.earliest_arrival_time_at_v_within_range_without_colliding_with_edge_obstacles(low, high, (n, v), hard_edge_obstacles)
+            original_low, high = safe_intervals[v][id_interval].begin, safe_intervals[v][id_interval].end
+            low = max(n.safe_interval.begin + 1, self.earliest_arrival_time_at_v_within_range_without_colliding_with_edge_obstacles(original_low, high, (n, v), hard_edge_obstacles))
             if low is None:
                 continue
-            low_tag = self.earliest_arrival_time_at_v_within_range_without_colliding_with_edge_obstacles(low, high, (n, v), soft_edge_obstacles + hard_edge_obstacles)
-            if low_tag is not None and low_tag > low:
+            low_tag = max(n.safe_interval.begin + 1, self.earliest_arrival_time_at_v_within_range_without_colliding_with_edge_obstacles(original_low, high, (n, v), soft_edge_obstacles + hard_edge_obstacles))
+            if low_tag > low:
                 n1_g_val = low
-                n1_c_val = n.c + (1 if  self.safe_interval_contains_soft_obstacles(v, low, high, soft_obstacles) else 0) + (1 if (low, (n.vertex, v)) in soft_edge_obstacles else 0)
+                n1_c_val = n.c + (1 if self.safe_interval_contains_soft_obstacles(v, low, low_tag, soft_obstacles) else 0) + (1 if (low - 1, (v, n.vertex)) in soft_edge_obstacles else 0)
                 n1 = Node(vertex=v, safe_interval=Interval(low, low_tag, "safe"), id=id_interval, is_goal=False,
                           g=n1_g_val, h=self.heuristic(v, goal), f=n.g + self.heuristic(v, goal),
-                          c=n1_c_val, path=n.path + [v])
+                          c=n1_c_val, path=n.path + [v], who_expanded_me=n)
                 self.insert_node(n1, open_list, closed_list)
-                n2_g_val = low
-                n2_c_val = n.c + (1 if self.safe_interval_contains_soft_obstacles(v, low, high, soft_obstacles) else 0) + (1 if (low, (n.vertex, v)) in soft_edge_obstacles else 0)
+                n2_g_val = low_tag
+                n2_c_val = n.c + (1 if self.safe_interval_contains_soft_obstacles(v, low_tag, high, soft_obstacles) else 0) + (1 if (low_tag-1, (v, n.vertex)) in soft_edge_obstacles else 0)
                 n2 = Node(vertex=v, safe_interval=Interval(low_tag, high, "safe"), id=id_interval, is_goal=False,
                           g=n2_g_val, h=self.heuristic(v, goal), f=n.g + self.heuristic(v, goal),
-                          c=n2_c_val, path=n.path + [v])
+                          c=n2_c_val, path=n.path + [v], who_expanded_me=n)
                 self.insert_node(n2, open_list, closed_list)
             else:
                 n3_g_val = low
-                n3_c_val = n.c + (1 if self.safe_interval_contains_soft_obstacles(v, low, high, soft_obstacles) else 0) + (1 if (low, (n.vertex, v)) in soft_edge_obstacles else 0)
+                n3_c_val = n.c + (1 if self.safe_interval_contains_soft_obstacles(v, low, high, soft_obstacles) else 0) + (1 if (low-1, (v, n.vertex)) in soft_edge_obstacles else 0)
                 n3 = Node(vertex=v, safe_interval=Interval(low, high, "safe"), id=id_interval, is_goal=False,
                           g=n3_g_val, h=self.heuristic(v, goal), f=n.g + self.heuristic(v, goal),
-                          c=n3_c_val, path=n.path + [v])
+                          c=n3_c_val, path=n.path + [v], who_expanded_me=n)
 
-                self.insert_node(n3, open_list, closed_list)  # TODO currently there is a bug when running the program, try to compare to the version where you don't have edge collisions
+                self.insert_node(n3, open_list, closed_list)
 
     def earliest_arrival_time_at_v_within_range_without_colliding_with_edge_obstacles(self, low, high, edge,
                                                                                            edge_obstacles):
@@ -358,29 +376,30 @@ class LNS2:
             edge_obstacles: list of hard edge obstacles in the format of (timestamp, (v1, v2))
             meaning there is a hard edge obstacle that goes from v1 to v2 starting from `timestamp` at v1
             and ending at `timestamp` + 1 at v2
-        Returns: The earliest arrival time at v within the range [low, high] without colliding with hard edge obstacles
+        Returns: The earliest arrival time at v within the range [low, high] without colliding with edge obstacles
         """
-        n, v = edge
-        times_of_edge_being_used = sorted([t for t, (v1, v2) in edge_obstacles if v1 == n and v2 == v])
+        times_of_edge_being_used = [t for t, e in edge_obstacles if e == edge and low <= t < high]
         if not times_of_edge_being_used:
             return low
-        for t in times_of_edge_being_used:
-            if low > high:
-                return None
-            if low == t:
-                low += 1
-            else:
-                return low
+        return max(times_of_edge_being_used) + 1
 
     def safe_interval_contains_soft_obstacles(self, vertex, low, high, soft_obstacles):
         times_of_obstacles_in_t = [t for v, t in soft_obstacles if v == vertex]
         if not times_of_obstacles_in_t:
             return False
         max_timestamp = max(times_of_obstacles_in_t)
-        for i in range(int(low), min(high, max_timestamp) + 1):
+        for i in range(int(low), min(high-1, max_timestamp) + 1):
             if (vertex, i) in soft_obstacles:
                 return True
         return False
+
+    def extract_path(self, n):
+        path = [n.vertex]
+        while n.who_expanded_me is not None:
+            for i in range(n.safe_interval.begin - n.who_expanded_me.safe_interval.begin):
+                path.insert(0, n.who_expanded_me.vertex)
+            n = n.who_expanded_me
+        return path
 
 
 # for scen-randon we got

@@ -203,6 +203,8 @@ def weighted_random_destroy_method(
 ) -> Neighborhood:
     sol_cmatrix = solution_cmatrix(cmatrix, solution)
     ranks = sol_cmatrix.sum(dim=1)
+    if ranks.sum() == 0:
+        ranks += 1
     probabilities = ranks / ranks.sum()
 
     return torch.multinomial(probabilities, n_subset, replacement=False)
@@ -360,8 +362,14 @@ def worker(
 
     while True:
         # with bench.benchmark(label="Worker iteration"):
+        n_subset = c.neighborhood_size
+        if c.dynamic_neighborhood is not None:
+            n_subset = int(
+                torch.randint(c.dynamic_neighborhood, n_subset + 1, (1,)).item()
+            )
+
         neighborhood = destroy_method(
-            shared_cmatrix, thread_solution, c.n_agents, c.n_paths, c.neighborhood_size
+            shared_cmatrix, thread_solution, c.n_agents, c.n_paths, n_subset
         )
         thread_solution = repair_method(
             shared_cmatrix, c.n_agents, c.n_paths, thread_solution, neighborhood
@@ -428,20 +436,25 @@ def run_parallel(
     start = time.time()
     log_values = []
     sample_rate = 10 / 1_000  # 10 ms
+    min_collisions = float("inf")
     with tqdm(total=n_seconds) as pbar:
         while (time_passed := time.time() - start) < n_seconds:
             with lock:
                 iterations = shared_iterations.item()
                 cols = int(shared_collisions.item())
 
-                # if 0 < cols <= c.n_agents / 10:
+                # if 0 < cols <= 10:
                 #     sol_cmatrix = solution_cmatrix(shared_cmatrix, shared_solution)
                 #     colliding_agents = torch.any(sol_cmatrix, dim=1).nonzero().flatten()
-                #     print(colliding_agents.tolist())
+                # print()
+                # print(colliding_agents.tolist())
+                # print()
 
-            log_values.append((((time.time() - start) * 1_000, cols)))
+            min_collisions = min(min_collisions, cols)
+
+            log_values.append(((time_passed * 1_000, cols)))
             pbar.set_description(
-                f"Agents: {c.n_agents: 2} Iterations: {iterations} Cols: {cols}"
+                f"Agents: {c.n_agents: 2} Min: {min_collisions} Iterations: {iterations} Cols: {cols}"
             )
 
             if optimal is not None and cols <= optimal:

@@ -1,12 +1,15 @@
 import itertools
 import time
-from collections import defaultdict
+from collections import defaultdict, deque
 from typing import NamedTuple, Protocol
 
 import numpy as np
 import torch
 import torch.multiprocessing as mp
 from tqdm import tqdm
+from multiprocessing import shared_memory
+from concurrent.futures import ProcessPoolExecutor
+from queue import Queue
 
 from Agent import Agent
 from benchmark_utils import benchmark, Benchmark
@@ -74,29 +77,15 @@ class RepairMethod(Protocol):
         raise NotImplementedError()
 
 
-def build_cmatrix(agents: list[Agent], device="cpu") -> CMatrix:
-    """
-    Build a collision matrix for all agent paths.
-    """
+def _build_cmatrix_worker(groups, name, size, n_paths, total):
+    buf = shared_memory.SharedMemory(name=name, create=False)
+    path_collisions = np.ndarray((size, size), dtype=np.int8, buffer=buf.buf)
 
-    n_agents = len(agents)
-    n_paths = agents[0].n_paths
+    if total > 0:
+        pbar = tqdm(total=total, desc="Building cmatrix")
 
-    vertices = defaultdict(set)
-    edges = defaultdict(set)
-    for agent in agents:
-        agent_id = agent.id - 1
-        for path_id, locations in enumerate(agent.paths):
-            for vertex, edge in iter_path(locations):  # type: ignore
-                vertices[vertex].add((agent_id, path_id))
-
-                if edge is not None:
-                    edges[edge].add((agent_id, path_id))
-                    edges[edge.reverse()].add((agent_id, path_id))
-
-    size = n_agents * n_paths
-    path_collisions = np.zeros((size, size), dtype=np.int16)
-    for group in itertools.chain(vertices.values(), edges.values()):
+    while groups:
+        group = groups.popleft()
         for (a_agent, a_path), (b_agent, b_path) in itertools.combinations(group, 2):
             if a_agent == b_agent:
                 continue
@@ -107,7 +96,63 @@ def build_cmatrix(agents: list[Agent], device="cpu") -> CMatrix:
             path_collisions[a][b] = 1
             path_collisions[b][a] = 1
 
-    path_collisions = torch.tensor(path_collisions, device=device)
+        if total > 0:
+            pbar.n = total - len(groups)
+            pbar.refresh()
+
+
+def build_cmatrix(agents: list[Agent], device="cpu") -> CMatrix:
+    """
+    Build a collision matrix for all agent paths.
+    """
+
+    n_agents = len(agents)
+    n_paths = agents[0].n_paths
+
+    vertices = defaultdict(set)
+    edges = defaultdict(set)
+    for agent in tqdm(agents, desc="Scanning paths"):
+        agent_id = agent.id - 1
+        for path_id, locations in enumerate(agent.paths):
+            for vertex, edge in iter_path(locations):  # type: ignore
+                vertices[vertex].add((agent_id, path_id))
+
+                if edge is not None:
+                    edges[edge].add((agent_id, path_id))
+                    edges[edge.reverse()].add((agent_id, path_id))
+
+    size = n_agents * n_paths
+    buf_name = "path_collisions"
+    shared_mem = shared_memory.SharedMemory(
+        name=buf_name,
+        create=True,
+        size=size * size * np.int8().nbytes,
+    )
+    path_collisions = np.ndarray((size, size), dtype=np.int8, buffer=shared_mem.buf)
+    path_collisions[::] = 0
+
+    n_proc = mp.cpu_count()
+    groups = deque(itertools.chain(vertices.values(), edges.values()))
+
+    with ProcessPoolExecutor() as executor:
+        total = len(groups)
+        futures = [
+            executor.submit(
+                _build_cmatrix_worker,
+                groups,
+                buf_name,
+                size,
+                n_paths,
+                total if i == 0 else 0,
+            )
+            for i in range(n_proc)
+        ]
+
+        for future in futures:
+            future.result()
+
+    path_collisions = torch.tensor(path_collisions, dtype=torch.bool, device=device)
+    shared_mem.close()
 
     return path_collisions
 

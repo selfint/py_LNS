@@ -169,10 +169,43 @@ def solution_cmatrix(cmatrix: CMatrix, solution: Solution) -> CMatrix:
     return cmatrix[solution_idx][:, solution_idx]
 
 
+class RandomDestroyMethod:
+    def __init__(self, n_subset: int) -> None:
+        self.n_subset = n_subset
+
+    def __call__(
+        self,
+        cmatrix: CMatrix,
+        solution: Solution,
+        n_agents: int,
+        n_paths: int,
+        _n_subset: int,
+    ) -> Neighborhood:
+        return torch.randperm(n_agents, device=cmatrix.device)[: self.n_subset]
+
+
 def random_destroy_method(
-    cmatrix: CMatrix, solution: Solution, n_agents: int, n_paths: int, n_subset: int
+    cmatrix: CMatrix,
+    solution: Solution,
+    n_agents: int,
+    n_paths: int,
+    n_subset: int,
 ) -> Neighborhood:
     return torch.randperm(n_agents, device=cmatrix.device)[:n_subset]
+
+
+def weighted_random_destroy_method(
+    cmatrix: CMatrix,
+    solution: Solution,
+    n_agents: int,
+    n_paths: int,
+    n_subset: int,
+) -> Neighborhood:
+    sol_cmatrix = solution_cmatrix(cmatrix, solution)
+    ranks = sol_cmatrix.sum(dim=1)
+    probabilities = ranks / ranks.sum()
+
+    return torch.multinomial(probabilities, n_subset, replacement=False)
 
 
 def argmax_destroy_method(
@@ -274,6 +307,7 @@ class Configuration(NamedTuple):
     repair_method: list[RepairMethod]
     neighborhood_size: int
     simulated_annealing: tuple[float, float, float] | None = None
+    dynamic_neighborhood: int | None = None
 
 
 def run_iteration(
@@ -286,8 +320,12 @@ def run_iteration(
     Runs iteration.
     """
 
+    n_subset = c.neighborhood_size
+    if c.dynamic_neighborhood is not None:
+        n_subset = int(torch.randint(c.dynamic_neighborhood, n_subset + 1, (1,)).item())
+
     neighborhood = c.destroy_method[0](
-        cmatrix, solution, c.n_agents, c.n_paths, c.neighborhood_size
+        cmatrix, solution, c.n_agents, c.n_paths, n_subset
     )
     new_solution = c.repair_method[0](
         cmatrix, c.n_agents, c.n_paths, solution, neighborhood
@@ -309,6 +347,8 @@ def worker(
     c: Configuration,
     thread_id: int,
 ):
+    torch.manual_seed(thread_id)
+
     with lock:
         thread_solution = shared_solution.clone()
         thread_collisions = shared_collisions.clone()
@@ -326,7 +366,9 @@ def worker(
         thread_solution = repair_method(
             shared_cmatrix, c.n_agents, c.n_paths, thread_solution, neighborhood
         )
-        thread_collisions = solution_cmatrix(shared_cmatrix, thread_solution).sum() // 2
+        sol_cmatrix = solution_cmatrix(shared_cmatrix, thread_solution)
+        # thread_collisions = torch.any(sol_cmatrix, dim=1).sum().item()
+        thread_collisions = sol_cmatrix.sum() // 2
 
         with lock:
             shared_iterations += 1
@@ -391,6 +433,11 @@ def run_parallel(
             with lock:
                 iterations = shared_iterations.item()
                 cols = int(shared_collisions.item())
+
+                # if 0 < cols <= c.n_agents / 10:
+                #     sol_cmatrix = solution_cmatrix(shared_cmatrix, shared_solution)
+                #     colliding_agents = torch.any(sol_cmatrix, dim=1).nonzero().flatten()
+                #     print(colliding_agents.tolist())
 
             log_values.append((((time.time() - start) * 1_000, cols)))
             pbar.set_description(

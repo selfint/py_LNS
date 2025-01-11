@@ -2,8 +2,11 @@ import PathTable
 import instance
 import PathTable
 import numpy as np
-from LowLevelSolvers import PPNeighborhoodRepair, ExhaustiveNeighborhoodRepair, RankPPNeighborhoodRepair
+from LowLevelSolvers import PPNeighborhoodRepair, ExhaustiveNeighborhoodRepair, RankPPNeighborhoodRepair, NeighborhoodRepair
 import DestroyMethods
+import copy
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
+import typing
 
 def random_initial_solution(instance: instance.instance, path_table: PathTable.PathTable):
     random_path_selection = np.random.randint(instance.n_paths, size=instance.num_agents)
@@ -43,7 +46,7 @@ class RandomPP:
 
 
 class IterativeRandomLNS:
-    def __init__(self, instance: instance.instance, path_table:PathTable.PathTable, subset_size, num_iterations = 1000, destroy_method_name = 'priority', low_level_solver_name = 'pp'):
+    def __init__(self, instance: instance.instance, path_table:PathTable.PathTable, subset_size, num_iterations = 1000, destroy_method_name = 'priority', low_level_solver_name = 'pp', random_seed: int = None):
         self.instance = instance
         self.path_table = path_table
         self.subset_size = subset_size
@@ -62,6 +65,7 @@ class IterativeRandomLNS:
                         'rank-pp': RankPPNeighborhoodRepair,
                         'exhaustive': ExhaustiveNeighborhoodRepair}
         self.low_level_solver = solvers_list[low_level_solver_name]
+        self.random_seed = random_seed
 
 
 
@@ -71,6 +75,7 @@ class IterativeRandomLNS:
             print(subset)
         subset_path_ids = [int(self.instance.agents[agent_id].path_id) for agent_id in subset]
         if self.verbose:
+            print(subset_path_ids)
             print(f'\n**** Initial number of collisions: {self.num_collisions} ****')
         low_level_solver = self.low_level_solver(agent_cost_type = 'mean', instance = self.instance,path_table =  self.path_table, agent_subset = subset, verbose=False)
         low_level_solver.run()
@@ -79,6 +84,7 @@ class IterativeRandomLNS:
             self.num_collisions = new_num_collisions
             if self.verbose:
                 print(f'**** Iteration successful! ****')
+                print(f'        New path ids: {[int(self.instance.agents[agent_id].path_id) for agent_id in subset]} ****')
                 print(f'        New collision count: {self.num_collisions} ****\n')
         else:
             low_level_solver.destroy_neighborhood()
@@ -91,6 +97,16 @@ class IterativeRandomLNS:
         self.collision_statistics += [self.num_collisions]
 
 
-    def run(self):
+    def run(self, early_stopping = False) -> tuple[typing.Self, int]:
+        # used for determinism in parallelization tests
+        if self.random_seed is not None:
+            np.random.seed(self.random_seed)
+
         for iteration in range(self.num_iterations):
+            prev_collisions = self.num_collisions
             self.run_iteration()
+            if early_stopping and (self.num_collisions < prev_collisions):
+                return self, iteration + 1
+
+        return self, self.num_iterations
+

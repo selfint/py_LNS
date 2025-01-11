@@ -5,6 +5,7 @@ import PathTable
 import numpy as np
 import itertools
 
+from benchmark_utils import benchmark
 
 class NeighborhoodRepair:
     def __init__(self,*args, **kwargs):
@@ -22,6 +23,8 @@ class NeighborhoodRepair:
     def run(self):
         raise NotImplementedError()
 class PPNeighborhoodRepair(NeighborhoodRepair):
+    # reroute_agent rolling mean execution time: 258.485603 μs (over 10000 runs)
+    # @benchmark(n=10_000)
     def reroute_agent(self, agent_id):
         if self.verbose:
             print(f'\n**** Rerouting agent {agent_id} ****')

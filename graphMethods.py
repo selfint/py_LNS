@@ -15,7 +15,7 @@ def get_degrees_of_all_vertices(adj_matrix):
 def get_largest_connected_component(matrix):
     graph = csr_matrix(matrix)
     n_components, labels = connected_components(csgraph=graph, directed=False, return_labels=True)
-    counter = Counter(labels)
+    counter = Counter([label for label in labels if label >0])
     largest_cc_id = counter.most_common()[0][0]
     agent_ids = [i for i, x in enumerate(labels) if x == largest_cc_id]
     return agent_ids

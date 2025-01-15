@@ -77,6 +77,19 @@ class RepairMethod(Protocol):
         raise NotImplementedError()
 
 
+
+def build_cost_matrix(agents: list[Agent], device="cpu") -> CMatrix:
+    """
+    Build a collision matrix for all agent paths.
+    """
+
+    cost_matrix = [[len(paths) for paths in agent.paths] for agent in agents]
+
+    cost_matrix = torch.tensor(cost_matrix, device=device)
+
+    return cost_matrix
+
+
 def build_cmatrix(agents: list[Agent], device="cpu") -> CMatrix:
     """
     Build a collision matrix for all agent paths.
@@ -308,8 +321,8 @@ class Configuration(NamedTuple):
     destroy_method: list[DestroyMethod]
     repair_method: list[RepairMethod]
     neighborhood_size: int
-    simulated_annealing: tuple[float, float, float] | None = None
-    dynamic_neighborhood: int | None = None
+    simulated_annealing: tuple[float, float, float] or None = None
+    dynamic_neighborhood: int or None = None
 
 
 def run_iteration(
@@ -406,7 +419,7 @@ def run_parallel(
     c: Configuration,
     n_threads: int,
     n_seconds: int,
-    optimal: int | None = None,
+    optimal: int or None = None,
 ) -> tuple[Solution, int, list[float], list[int]]:
 
     shared_cmatrix = cmatrix.share_memory_()

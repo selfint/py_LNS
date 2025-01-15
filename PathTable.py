@@ -58,7 +58,7 @@ def iter_edges(path: list[tuple[int, int]]) -> Generator[Edge, None, None]:
         prev = x, y, t
 
 
-def iter_path(path: list[tuple[int, int]]) -> Generator[tuple[Vertex, Edge | None], None, None]:
+def iter_path(path: list[tuple[int, int]]):
     """
     Yields vertices and edges of a path, where the edge is the connection
     between the previous vertex to the current vertex.

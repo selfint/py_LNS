@@ -92,7 +92,7 @@ def plot_paths(paths, labels = []):
     plt.show()
 
 
-def plot_line_graph(x,y, title = "", label = ""):
+def plot_line_graph(x,y, title = "", label = "", x_axis_label = "", y_axis_label = "" ):
     '''
 
     Plots a path represented by a 2d numpy array
@@ -104,7 +104,11 @@ def plot_line_graph(x,y, title = "", label = ""):
     plt.grid()
     plt.title(title)
 
+    plt.xlabel(x_axis_label)
+    plt.ylabel(y_axis_label)
+
     plt.plot(x, y,label = label)
+
 
     #plt.legend()
     plt.show()

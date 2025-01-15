@@ -15,10 +15,10 @@ def random_initial_solution(instance: instance.instance, path_table: PathTable.P
         instance.agents[agent_id].path_id = int(path_idx)
     path_table.calculate_makespan()
 
-def generate_random_random_solution_iterative(instance: instance.instance, path_table: PathTable.PathTable, iterations = 200):
+def generate_random_random_solution_iterative(instance: instance.instance, path_table: PathTable.PathTable, iterations = 1000):
     random_initial_solution(instance, path_table) # Choose random paths as initial solution
     solver = IterativeRandomLNS(instance, path_table, 3, num_iterations = iterations)
-    solver.run()
+    return solver.run()
 class RandomPP:
     def __init__(self, instance: instance.instance, path_table:PathTable.PathTable):
         self.instance = instance
@@ -97,7 +97,7 @@ class IterativeRandomLNS:
         self.collision_statistics += [self.num_collisions]
 
 
-    def run(self, early_stopping = False) -> tuple[typing.Self, int]:
+    def run(self, early_stopping = False):
         # used for determinism in parallelization tests
         if self.random_seed is not None:
             np.random.seed(self.random_seed)

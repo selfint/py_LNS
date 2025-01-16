@@ -89,6 +89,20 @@ def build_cost_matrix(agents: list[Agent], device="cpu") -> CMatrix:
     return cost_matrix
 
 
+def build_cost_matrix_from_paths(
+    paths: list[list[tuple[int, int]]], device="cpu"
+) -> CMatrix:
+    """
+    Build a collision matrix for all agent paths.
+    """
+
+    cost_matrix = [[len(path) for path in agent_paths] for agent_paths in paths]
+
+    cost_matrix = torch.tensor(cost_matrix, device=device)
+
+    return cost_matrix
+
+
 def build_cmatrix(agents: list[Agent], device="cpu") -> CMatrix:
     """
     Build a collision matrix for all agent paths.

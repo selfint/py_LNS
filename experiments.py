@@ -1063,14 +1063,16 @@ def uniform_experiment(
     map_file: Path,
     repetitions: int,
     generate: bool,
+    solve: bool,
     config: lns.Configuration,
     n_seconds: int,
-):
+) -> float:
     import path_generator
     import scenario_generator
     import networkx as nx
     import torch
     import json
+    import CBS2
 
     seed = 42
 
@@ -1080,7 +1082,6 @@ def uniform_experiment(
     np.random.seed(seed=seed)
 
     real_results_file = log_dir / "real_results.json"
-    synthetic_results_file = log_dir / "synthetic_results.json"
 
     # load map
     map_graph, _, _ = scenario_generator.load_map(map_file)
@@ -1127,13 +1128,13 @@ def uniform_experiment(
             paths = [p for i, p in enumerate(paths) if i not in colliding_agents]
             if len(paths) < config.n_agents:
                 print(
-                    f"\nGenerated {n_agents} agent had {len(paths)} valid agents,"
+                    f"Generated {n_agents} agent had {len(paths)} valid agents,"
                     f" needed {config.n_agents}, retrying...\n"
                 )
                 continue
 
             print(
-                f"\n{n_agents} agents had {len(colliding_agents)}"
+                f"{n_agents} agents had {len(colliding_agents)}"
                 f" collisions - OK, using {config.n_agents}\n"
             )
             paths = paths[: config.n_agents]
@@ -1150,19 +1151,28 @@ def uniform_experiment(
 
         # get density
         density = float(cmatrix.sum() / (cmatrix.shape[0] ** 2))
+        print(f"{density=:.4f} mean={np.mean(real_densities):.4f}\n")
         real_densities.append(density)
 
         # get collisions
-        solution = lns.random_initial_solution(config.n_agents, config.n_paths)
-        _, collisions, _, _ = lns.run_parallel(
-            cmatrix=cmatrix,
-            solution=solution,
-            collisions=int(lns.solution_cmatrix(cmatrix, solution).sum() // 2),
-            config=config,
-            n_threads=4,
-            n_seconds=n_seconds,
-            optimal=0,
-        )
+        if solve:
+            solution = lns.random_initial_solution(config.n_agents, config.n_paths)
+            collisions = int(lns.solution_cmatrix(cmatrix, solution).sum() // 2)
+
+            # use lns for initial solution
+            pbar = tqdm.tqdm(range(1000), desc="Generating LNS initial solution")
+            for _ in pbar:
+                solution, collisions = lns.run_iteration(
+                    cmatrix, solution, int(collisions), config
+                )
+                pbar.set_description(f"Collisions: {collisions}")
+
+            print("Running CBS...\n")
+            solver = CBS2.CBS(paths, solution, verbose=False)
+            solution, collisions = solver.search()
+            print("CBS collisions:", collisions)
+        else:
+            collisions = -1
 
         (log_dir / f"real_scen_{i}_results.json").write_text(
             json.dumps({"density": density, "collisions": collisions})
@@ -1170,7 +1180,7 @@ def uniform_experiment(
 
         real_collisions.append(int(collisions))
 
-    mean_density = np.mean(real_densities)
+    mean_density = float(np.mean(real_densities))
 
     real_results_file.write_text(
         json.dumps(
@@ -1184,7 +1194,24 @@ def uniform_experiment(
 
     print(f"Density {mean_density=:.4f}")
 
-    print("Generating synthetic cmatrices")
+    return mean_density
+
+
+def uniform_synthetic_experiment(
+    log_dir: Path,
+    repetitions: int,
+    mean_density: float,
+    config: lns.Configuration,
+    n_seconds: int,
+):
+    import torch
+    import json
+
+    seed = 42
+    np.random.seed(seed=seed)
+    print(f"Generating synthetic cmatrices {seed=} {mean_density=}")
+
+    synthetic_results_file = log_dir / "synthetic_results.json"
 
     synthetic_densities = []
     synthetic_collisions = []

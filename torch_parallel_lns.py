@@ -77,7 +77,6 @@ class RepairMethod(Protocol):
         raise NotImplementedError()
 
 
-
 def build_cost_matrix(agents: list[Agent], device="cpu") -> CMatrix:
     """
     Build a collision matrix for all agent paths.
@@ -95,14 +94,15 @@ def build_cmatrix(agents: list[Agent], device="cpu") -> CMatrix:
     Build a collision matrix for all agent paths.
     """
 
-    n_agents = len(agents)
-    n_paths = agents[0].n_paths
+    paths = [a.paths for a in agents]
+
+    n_agents = len(paths)
+    n_paths = len(paths[0])
 
     vertices = defaultdict(set)
     edges = defaultdict(set)
-    for agent in agents:
-        agent_id = agent.id - 1
-        for path_id, locations in enumerate(agent.paths):
+    for agent_id, agent_paths in enumerate(tqdm(paths, desc="Scanning paths")):
+        for path_id, locations in enumerate(agent_paths):
             for vertex, edge in iter_path(locations):  # type: ignore
                 vertices[vertex].add((agent_id, path_id))
 
@@ -112,7 +112,11 @@ def build_cmatrix(agents: list[Agent], device="cpu") -> CMatrix:
 
     size = n_agents * n_paths
     path_collisions = np.zeros((size, size), dtype=np.int16)
-    for group in itertools.chain(vertices.values(), edges.values()):
+    for group in tqdm(
+        itertools.chain(vertices.values(), edges.values()),
+        total=len(vertices) + len(edges),
+        desc="Building cmatrix",
+    ):
         for (a_agent, a_path), (b_agent, b_path) in itertools.combinations(group, 2):
             if a_agent == b_agent:
                 continue
@@ -126,10 +130,6 @@ def build_cmatrix(agents: list[Agent], device="cpu") -> CMatrix:
     path_collisions = torch.tensor(path_collisions, device=device)
 
     return path_collisions
-
-
-def agents_to_paths(agents: list[Agent]) -> list[list[tuple[int, int]]]:
-    return [a.paths for a in agents]  # type: ignore
 
 
 def build_cmatrix_fast(paths: list[list[tuple[int, int]]], device="cpu") -> CMatrix:
@@ -166,14 +166,16 @@ def build_cmatrix_fast(paths: list[list[tuple[int, int]]], device="cpu") -> CMat
 
     for group in tqdm(groups, desc="Building cmatrix"):
         agents = group[:, 0]
-        paths = group[:, 1]
+        paths = group[:, 1]  # type: ignore
         ids = agents * n_paths + paths
         path_collisions[ids[:, None], ids] = 1
 
-    # set diagonal to zero
-    np.fill_diagonal(path_collisions, 0)
-
     path_collisions = torch.tensor(path_collisions, dtype=torch.bool, device=device)
+
+    # remove agent collisions with themselves
+    view = path_collisions.view((n_agents, n_paths, n_agents, n_paths))
+    for agent in range(n_agents):
+        view[agent, :, agent, :] = 0
 
     return path_collisions
 
@@ -183,7 +185,6 @@ def solution_cmatrix(cmatrix: CMatrix, solution: Solution) -> CMatrix:
     Generate a solution collision matrix from a slice of the cmatrix.
     """
     solution_idx = torch.nonzero(solution.ravel(), as_tuple=True)[0]
-
     return cmatrix[solution_idx][:, solution_idx]
 
 
@@ -326,8 +327,8 @@ class Configuration(NamedTuple):
     destroy_method: list[DestroyMethod]
     repair_method: list[RepairMethod]
     neighborhood_size: int
-    simulated_annealing: tuple[float, float, float] or None = None
-    dynamic_neighborhood: int or None = None
+    simulated_annealing: tuple[float, float, float] | None = None
+    dynamic_neighborhood: int | None = None
 
 
 def run_iteration(
@@ -439,7 +440,7 @@ def run_parallel(
     config: Configuration,
     n_threads: int,
     n_seconds: int,
-    optimal: int or None = None,
+    optimal: int | None = None,
 ) -> tuple[Solution, int, list[float], list[int]]:
 
     shared_cmatrix = cmatrix.share_memory_()

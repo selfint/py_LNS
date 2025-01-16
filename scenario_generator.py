@@ -1,24 +1,109 @@
+from typing import NamedTuple
 from pathlib import Path
 
 import networkx as nx
 import numpy as np
 
 import aux
-from graphMethods import create_graph_from_map
 
 
-def main(map_file: Path, num_agents: int, output_file: Path) -> None:
+class Point(NamedTuple):
+    x: int
+    y: int
+
+
+class Agent(NamedTuple):
+    start: Point
+    end: Point
+
+
+class Map(NamedTuple):
+    graph: nx.Graph
+    n_rows: int
+    n_cols: int
+
+
+def load_map(map_file: Path) -> Map:
     file_string = map_file.read_text()
     lines = file_string.splitlines()
 
-    num_of_rows = aux.extract_digits(lines[1])
-    num_of_cols = aux.extract_digits(lines[2])
+    n_rows = aux.extract_digits(lines[1])
+    n_cols = aux.extract_digits(lines[2])
 
     map_array = np.array([[c != "." for c in l] for l in lines[4:]], dtype=np.int8)
+    assert map_array.shape == (n_rows, n_cols)
 
-    assert map_array.shape == (num_of_rows, num_of_cols)
+    map_graph = nx.grid_2d_graph(n_rows, n_cols)
+    nodes = [tuple(loc) for loc in np.argwhere(map_array > 0)]
+    map_graph.remove_nodes_from(nodes)
 
-    map_graph = create_graph_from_map(map_array, num_of_rows, num_of_cols)
+    return Map(map_graph, n_rows, n_cols)
+
+
+def load_agents(agents_file: Path) -> list[Agent]:
+    lines = agents_file.read_text().splitlines()
+
+    agents = []
+    for line in lines[1:]:
+        sx, sy, ex, ey = line.split("\t")[4:8]
+
+        agent = Agent(
+            Point(int(sx), int(sy)),
+            Point(int(ex), int(ey)),
+        )
+        agents.append(agent)
+
+    return agents
+
+
+def generate_scenario(map_graph: nx.Graph, n_agents: int) -> list[Agent]:
+    """
+    Generates a list of agents with start and end points on a given map graph.
+    Parameters:
+        map_graph (nx.Graph): The graph representing the map.
+        n_agents (int): The number of agents to generate.
+
+    Returns:
+        list[Agent]: A list of Agent objects with start and end points.
+
+    Raises:
+        ValueError: If the generated graph is not fully connected.
+
+    Notes:
+        - The start and end points for each agent are randomly selected from the nodes of the graph.
+        - The start and end points for each agent are guaranteed to be different.
+        - Uses numpy random
+    """
+
+    points = np.array(map_graph.nodes)
+
+    if not nx.is_connected(map_graph):
+        raise ValueError("The generated graph is not fully connected.")
+
+    starts = np.random.permutation(len(points))[:n_agents]
+
+    ends = []
+    for start in starts:
+        # not start
+        end = np.random.choice([i for i in range(len(points)) if i != start])
+        ends.append(end)
+    ends = np.array(ends)
+
+    assert not any(starts[i] == ends[i] for i in range(n_agents))
+
+    start_points = points[starts]
+    end_points = points[ends]
+
+    agents = []
+    for (sx, sy), (ex, ey) in zip(start_points, end_points):
+        agent = Agent(Point(int(sx), int(sy)), Point(int(ex), int(ey)))
+        agents.append(agent)
+
+    return agents
+
+
+def main(map_file: Path, num_agents: int, output_file: Path) -> None:
+    map_graph, n_rows, n_cols = load_map(map_file)
     points = np.array(map_graph.nodes)
 
     if not nx.is_connected(map_graph):
@@ -44,7 +129,7 @@ def main(map_file: Path, num_agents: int, output_file: Path) -> None:
         assert (sx, sy) in map_graph.nodes
         assert (ex, ey) in map_graph.nodes
 
-        line = [0, map_file.name, num_of_rows, num_of_cols, sx, sy, ex, ey, 1.0]
+        line = [0, map_file.name, n_rows, n_cols, sx, sy, ex, ey, 1.0]
         agent_lines.append(line)
 
     output_text = "\n".join(

@@ -48,7 +48,7 @@ class CBS:
         self.open |= {initial_node}
 
         # Line 5 of CBS
-        pbar = tqdm.tqdm(total=self.max_expanded, desc="Scanning nodes")
+        pbar = tqdm.tqdm(total=self.max_expanded, desc="CBS Collisions: N/A")
         while self.open:
 
             # Line 6 of CBS
@@ -117,6 +117,8 @@ class CBS:
 
                     # Line 17 of CBS
                     self.open |= {a}
+
+            pbar.set_description(f"CBS Collisions: {best_sol.col_count}")
         print(best_sol.col_count)
         print(f"Expanded nodes: {self.expanded}")
         return best_sol.solution, best_sol.col_count

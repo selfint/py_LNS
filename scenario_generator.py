@@ -23,7 +23,7 @@ class Map(NamedTuple):
     n_cols: int
 
 
-def load_map(map_file: Path) -> Map:
+def load_map(map_file: Path, verbose=False) -> Map:
     file_string = map_file.read_text()
     lines = file_string.splitlines()
 
@@ -33,24 +33,39 @@ def load_map(map_file: Path) -> Map:
     map_array = np.array([[c != "." for c in l] for l in lines[4:]], dtype=np.int8)
     assert map_array.shape == (n_rows, n_cols)
 
-    map_graph = nx.grid_2d_graph(n_rows, n_cols)
+    # NOTE: numpy works in (row, col)/(y, x), nx works in (col, row)/(x, y)
+    #       no real "right" way, just keep this in mind
+    map_graph: nx.Graph = nx.grid_2d_graph(n_rows, n_cols)
     nodes = [tuple(loc) for loc in np.argwhere(map_array > 0)]
     map_graph.remove_nodes_from(nodes)
+
+    if verbose:
+        temp = np.ones_like(map_array)
+        for x, y in map_graph.nodes:
+            temp[x][y] = 0
+
+        print(map_file)
+        print(temp.shape, (n_rows, n_cols))
+        print("\n".join(["".join(["@" if c else "." for c in r]) for r in temp]))
 
     return Map(map_graph, n_rows, n_cols)
 
 
-def load_agents(agents_file: Path) -> list[Agent]:
-    lines = agents_file.read_text().splitlines()
-
+def load_agents(agents_file: Path, flip_xy=False) -> list[Agent]:
     agents = []
-    for line in lines[1:]:
+    for line in agents_file.read_text().splitlines()[1:]:
         sx, sy, ex, ey = line.split("\t")[4:8]
 
-        agent = Agent(
-            Point(int(sx), int(sy)),
-            Point(int(ex), int(ey)),
-        )
+        if flip_xy:
+            agent = Agent(
+                Point(int(sy), int(sx)),
+                Point(int(ey), int(ex)),
+            )
+        else:
+            agent = Agent(
+                Point(int(sx), int(sy)),
+                Point(int(ex), int(ey)),
+            )
         agents.append(agent)
 
     return agents

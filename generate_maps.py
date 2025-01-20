@@ -25,4 +25,3 @@ def generate_random_map(map_type, map_height, map_width, density, obstacle_chara
 
     map_lines.append("".join([obstacle_character] * map_width))
     return "\n".join(map_lines)
-

@@ -349,21 +349,23 @@ def run_iteration(
     cmatrix: CMatrix,
     solution: Solution,
     collisions: int,
-    c: Configuration,
+    config: Configuration,
 ) -> tuple[Solution, int]:
     """
     Runs iteration.
     """
 
-    n_subset = c.neighborhood_size
-    if c.dynamic_neighborhood is not None:
-        n_subset = int(torch.randint(c.dynamic_neighborhood, n_subset + 1, (1,)).item())
+    n_subset = config.neighborhood_size
+    if config.dynamic_neighborhood is not None:
+        n_subset = int(
+            torch.randint(config.dynamic_neighborhood, n_subset + 1, (1,)).item()
+        )
 
-    neighborhood = c.destroy_method[0](
-        cmatrix, solution, c.n_agents, c.n_paths, n_subset
+    neighborhood = config.destroy_method[0](
+        cmatrix, solution, config.n_agents, config.n_paths, n_subset
     )
-    new_solution = c.repair_method[0](
-        cmatrix, c.n_agents, c.n_paths, solution, neighborhood
+    new_solution = config.repair_method[0](
+        cmatrix, config.n_agents, config.n_paths, solution, neighborhood
     )
     new_collisions = solution_cmatrix(cmatrix, new_solution).sum() // 2
 

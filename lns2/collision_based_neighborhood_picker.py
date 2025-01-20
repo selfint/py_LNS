@@ -2,9 +2,9 @@ import random
 from typing import List
 from numpy.random import choice  # TODO convert all calls to random.choice
 import networkx as nx
-from PathTable import PathTable
 from neighborhood_picker import NeighborhoodPicker
 MAKESPAN = 100
+
 
 class CollisionBasedNeighborhoodPicker(NeighborhoodPicker):
     def __init__(self, n_size: int, graph: nx.Graph):
@@ -12,11 +12,7 @@ class CollisionBasedNeighborhoodPicker(NeighborhoodPicker):
         self.graph: nx.Graph = graph
 
     def pick(self, paths: dict[int: List[int]]) -> list[int]:
-        p_table = PathTable(None, None, len(paths))
-        for agent_id, path in paths.items():
-            p_table.insert_path(agent_id, path)
-
-        collision_graph = p_table.get_collisions_graph()
+        collision_graph = self.generate_collision_graph(paths)
         random_vertex = choice([v for v in collision_graph.nodes if collision_graph.degree[v] > 0])
         connected_component = self.find_connected_component(random_vertex, collision_graph)
         A_s: list[int] = []
@@ -90,3 +86,22 @@ class CollisionBasedNeighborhoodPicker(NeighborhoodPicker):
                 if len(path) > random_timestamp and path[random_timestamp] == random_v:
                     return agent_id
         return None
+
+    def generate_collision_graph(self, paths) -> nx.Graph:
+        collision_graph = nx.Graph()
+        collision_graph.add_nodes_from(paths.keys())
+        for agent_id, path in paths.items():
+            for agent_id2, path2 in paths.items():
+                if agent_id == agent_id2:
+                    continue
+                for i in range(min(len(path), len(path2))):
+                    if path[i] == path2[i]:
+                        collision_graph.add_edge(agent_id, agent_id2)
+                        break
+                # detect edge collisions:
+                for i in range(min(len(path), len(path2)) - 1):
+                    if path[i] == path2[i + 1] and path[i + 1] == path2[i]:
+                        collision_graph.add_edge(agent_id, agent_id2)
+                        break
+        return collision_graph
+

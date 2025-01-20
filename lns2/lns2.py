@@ -6,7 +6,7 @@ from adaptive_lns_neighborhood_picker import AdaptiveLNSNeighborhoodPicker
 from node import Node
 from safe_interval_table import SafeIntervalTable
 from enum import Enum
-import matplotlib.animation as animation
+# import matplotlib.animation as animation
 
 Strategy = Enum('strategy', 'PP AStar')
 
@@ -108,13 +108,13 @@ class LNS2:
         # Starting the algorithm
         solution = self.init_initial_solution()
         if self.num_of_colliding_pairs(solution) == 0:
-            print("found solution with 0 collisions at initial solution (iteration 0)")
-            animate_paths((32, 32), solution, 0)
+            print(f"found solution with 0 collisions at initial solution (iteration 0)\n\n {solution}")
+            # animate_paths((32, 32), solution, 0)
             return
         for i in range(self.MAX_ITERATIONS):
             old_solution = copy.copy(solution)
             neighborhood = self.neighborhood_picker.pick(solution)
-            print(f"picked {neighborhood}")
+            print(f"picked {neighborhood} iteration {i}")
             for agent_id in neighborhood:
                 del solution[agent_id]
             new_solution = self.construct_new_solution(neighborhood, solution)
@@ -124,14 +124,14 @@ class LNS2:
             old_collisions = self.num_of_colliding_pairs(old_solution)
             new_collisions = self.num_of_colliding_pairs(new_solution)
             if new_collisions == 0:
-                print(f"found solution with 0 collisions {new_collisions} after {i} iterations")
-                animate_paths((32, 32), new_solution, i)
+                print(f"found solution with 0 collisions {new_collisions} after {i} iterations \n{new_solution}")
+                # animate_paths((32, 32), new_solution, i)
                 return
             self.neighborhood_picker.update(old_collisions - new_collisions)
             if new_collisions < old_collisions:
                 solution = new_solution
                 print(f"found better solutions with num of colliding pairs {new_collisions} collsions in iterataion {i}\n\n{solution}")
-                animate_paths((32, 32), solution, i)
+                # animate_paths((32, 32), solution, i)
             else:
                 if i % 1000 == 0:
                     print(f"iteration {i}")
@@ -147,7 +147,7 @@ class LNS2:
             edge_obstacles.extend([((agents_paths[agent_id][t], t), (agents_paths[agent_id][t+1], t+1)) for t in range(len(agents_paths[agent_id]) - 1)])
             hard_obstacles.extend([(v, t) for t, v in enumerate(agents_paths[agent_id])])
         print(f"found solution with {self.num_of_colliding_pairs(agents_paths)} collisions")
-        animate_paths((32, 32), agents_paths, 99999)
+        # animate_paths((32, 32), agents_paths, 99999)
 
 
     def init_initial_solution(self, strategy=Strategy.PP):
@@ -216,10 +216,10 @@ class LNS2:
             start, goal = self.agent_start_goal_dict[agent_id]
             soft_edge_obstacles = [(t, (path[t], path[t+1])) for _agent_id, path in existing_paths.items() for t in range(len(path) - 1)]
             agent_solution = self.sipp_pathfinding(start, goal, soft_obstacles, [], [], soft_edge_obstacles)
+            print("agent id {}".format(agent_id))
             if agent_solution is None:
                 return None
             new_solution[agent_id] = agent_solution
-
         return new_solution
 
     def sipp_pathfinding(self, start, goal, soft_obstacles: list[tuple[int, int]], hard_obstacles: list[tuple[int, int]], hard_edge_obstacles: list[tuple[int, tuple[int, int]]], soft_edge_obstacles: list[tuple[int, tuple[int, int]]]):

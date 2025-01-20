@@ -1411,10 +1411,15 @@ def random_maps_experiment(
     real_cmatrix_viz_file = experment_dir / "real_cmatrix_viz.txt"
     synthetic_cmatrix_file = experment_dir / "synthetic_cmatrix.json"
     synthetic_cmatrix_viz_file = experment_dir / "synthetic_cmatrix_viz.txt"
-    map_file = experment_dir / f"map{datetime.now()}-map-size{map_size}-map-density-{map_density}.map"
+    map_file = (
+        experment_dir
+        / f"map{datetime.now()}-map-size{map_size}-map-density-{map_density}.map"
+    )
 
     # load map
-    map = generate_maps.generate_random_map(map_type="FC", map_height=map_size, map_width=map_size, density=map_density)
+    map = generate_maps.generate_random_map(
+        map_type="FC", map_height=map_size, map_width=map_size, density=map_density
+    )
     with open(map_file, "w") as fh:
         fh.write(map)
 
@@ -1566,21 +1571,3 @@ def random_maps_experiment(
     synthetic_results_file.write_text(
         json.dumps({"density": real_density, "collisions": collisions})
     )
-
-if __name__ == '__main__':
-    config = {
-        "n_agents": 40,
-        "n_paths": 6,
-        "destroy_method": "random",
-        "repair_method": "pp",
-        "neighborhood": 20,
-        "simulated_annealing": None,
-        "repetitions": 25,
-        "n_seconds": 60,
-        "n_threads": 1,
-        "cbs_max_expanded": 10000,
-        "lns_initial_iterations": 1000,
-        "map_file": "./random-32-32-10.map",
-        "agent_file": None,
-    }
-    random_maps_experiment(Path("/tmp/uniform"), True, 0, config, map_size=16, map_density=0.1, seed=42, overwrite=True)

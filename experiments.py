@@ -1237,6 +1237,45 @@ def uniform_experiment(
         json.dumps({"density": real_density, "collisions": int(collisions)})
     )
 
+    # generate random collision matrix with mean density
+    size = config.n_agents * config.n_paths
+    cmatrix = (torch.rand(size, size) < (real_density / 2)).to(torch.bool)
+
+    # ensure cmatrix is symmetric
+    cmatrix = cmatrix | cmatrix.T
+    # print("\nSynthetic:")
+    # print("\n".join(["".join(["#" if c else "_" for c in r]) for r in cmatrix]))
+
+    # get generate density
+    synthetic_density = float(cmatrix.sum() / (cmatrix.shape[0] ** 2))
+    ratio = real_density / synthetic_density
+    print(f"{real_density=:.4f} {synthetic_density=:.4f} {ratio=:.4f}")
+
+    synthetic_cmatrix_file.write_text(json.dumps(cmatrix.tolist()))
+    synthetic_cmatrix_viz_file.write_text(
+        "\n".join(["".join(["#" if c else "_" for c in r]) for r in cmatrix])
+    )
+
+    # get collisions
+    solution = lns.random_initial_solution(config.n_agents, config.n_paths)
+    initial_collisions = int(lns.solution_cmatrix(cmatrix, solution).sum() // 2)
+    _, collisions, _, _ = lns.run_parallel(
+        cmatrix=cmatrix,
+        solution=solution,
+        collisions=initial_collisions,
+        config=config,
+        n_threads=params["n_threads"],
+        n_seconds=params["n_seconds"],
+        optimal=0,
+    )
+
+    # solution = research.solve_ortools(cmatrix, config.n_agents, config.n_paths)
+    # collisions = int(lns.solution_cmatrix(cmatrix, solution).sum() // 2)
+
+    synthetic_results_file.write_text(
+        json.dumps({"density": real_density, "collisions": collisions})
+    )
+
 
 class DensityExperimentParams(TypedDict):
     n_agents: int
@@ -1334,6 +1373,8 @@ def random_maps_experiment(
     import torch
     import json
     import CBS2
+    import generate_maps
+    from datetime import datetime
 
     methods = {"random": lns.random_destroy_method, "pp": lns.pp_repair_method}
     config = lns.Configuration(

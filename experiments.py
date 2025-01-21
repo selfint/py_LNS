@@ -1237,45 +1237,6 @@ def uniform_experiment(
         json.dumps({"density": real_density, "collisions": int(collisions)})
     )
 
-    # generate random collision matrix with mean density
-    size = config.n_agents * config.n_paths
-    cmatrix = (torch.rand(size, size) < (real_density / 2)).to(torch.bool)
-
-    # ensure cmatrix is symmetric
-    cmatrix = cmatrix | cmatrix.T
-    # print("\nSynthetic:")
-    # print("\n".join(["".join(["#" if c else "_" for c in r]) for r in cmatrix]))
-
-    # get generate density
-    synthetic_density = float(cmatrix.sum() / (cmatrix.shape[0] ** 2))
-    ratio = real_density / synthetic_density
-    print(f"{real_density=:.4f} {synthetic_density=:.4f} {ratio=:.4f}")
-
-    synthetic_cmatrix_file.write_text(json.dumps(cmatrix.tolist()))
-    synthetic_cmatrix_viz_file.write_text(
-        "\n".join(["".join(["#" if c else "_" for c in r]) for r in cmatrix])
-    )
-
-    # get collisions
-    solution = lns.random_initial_solution(config.n_agents, config.n_paths)
-    initial_collisions = int(lns.solution_cmatrix(cmatrix, solution).sum() // 2)
-    _, collisions, _, _ = lns.run_parallel(
-        cmatrix=cmatrix,
-        solution=solution,
-        collisions=initial_collisions,
-        config=config,
-        n_threads=params["n_threads"],
-        n_seconds=params["n_seconds"],
-        optimal=0,
-    )
-
-    # solution = research.solve_ortools(cmatrix, config.n_agents, config.n_paths)
-    # collisions = int(lns.solution_cmatrix(cmatrix, solution).sum() // 2)
-
-    synthetic_results_file.write_text(
-        json.dumps({"density": real_density, "collisions": collisions})
-    )
-
 
 class DensityExperimentParams(TypedDict):
     n_agents: int
@@ -1373,8 +1334,6 @@ def random_maps_experiment(
     import torch
     import json
     import CBS2
-    import generate_maps
-    from datetime import datetime
 
     methods = {"random": lns.random_destroy_method, "pp": lns.pp_repair_method}
     config = lns.Configuration(
@@ -1411,12 +1370,9 @@ def random_maps_experiment(
     real_cmatrix_viz_file = experment_dir / "real_cmatrix_viz.txt"
     synthetic_cmatrix_file = experment_dir / "synthetic_cmatrix.json"
     synthetic_cmatrix_viz_file = experment_dir / "synthetic_cmatrix_viz.txt"
-    map_file = experment_dir / f"map{datetime.now()}-map-size{map_size}-map-density-{map_density}.map"
+    map_file = experment_dir / f"../map-size-{map_size}.map"
 
     # load map
-    map = generate_maps.generate_random_map(map_type="FC", map_height=map_size, map_width=map_size, density=map_density)
-    with open(map_file, "w") as fh:
-        fh.write(map)
 
     map_graph, _, _ = scenario_generator.load_map(map_file)
     assert nx.is_connected(map_graph), "Map is not connected"
@@ -1438,8 +1394,6 @@ def random_maps_experiment(
 
         # build cmatrix
         cmatrix = lns.build_cmatrix_fast(paths)
-        # print("\nOriginal:")
-        # print("\n".join(["".join(["#" if c else "_" for c in r]) for r in cmatrix]))
         original_density = float(cmatrix.sum() / (cmatrix.shape[0] ** 2))
         print(f"{original_density=:.4f}\n")
 
@@ -1485,8 +1439,6 @@ def random_maps_experiment(
     # start evaluation
     cmatrix = lns.build_cmatrix_fast(paths)
     real_cmatrix_file.write_text(json.dumps(cmatrix.tolist()))
-    # print("\nUpdated:")
-    # print("\n".join(["".join(["#" if c else "_" for c in r]) for r in cmatrix]))
     real_cmatrix_viz_file.write_text(
         "\n".join(["".join(["#" if c else "_" for c in r]) for r in cmatrix])
     )
@@ -1523,64 +1475,8 @@ def random_maps_experiment(
         print(f"\nCollisions: {collisions}\n")
     else:
         collisions = -1
-
-    real_results_file.write_text(
-        json.dumps({"density": real_density, "collisions": int(collisions)})
-    )
-
-    # generate random collision matrix with mean density
-    size = config.n_agents * config.n_paths
-    cmatrix = (torch.rand(size, size) < (real_density / 2)).to(torch.bool)
-
-    # ensure cmatrix is symmetric
-    cmatrix = cmatrix | cmatrix.T
-    # print("\nSynthetic:")
-    # print("\n".join(["".join(["#" if c else "_" for c in r]) for r in cmatrix]))
-
-    # get generate density
-    synthetic_density = float(cmatrix.sum() / (cmatrix.shape[0] ** 2))
-    ratio = real_density / synthetic_density
-    print(f"{real_density=:.4f} {synthetic_density=:.4f} {ratio=:.4f}")
-
-    synthetic_cmatrix_file.write_text(json.dumps(cmatrix.tolist()))
-    synthetic_cmatrix_viz_file.write_text(
-        "\n".join(["".join(["#" if c else "_" for c in r]) for r in cmatrix])
-    )
-
-    # get collisions
-    solution = lns.random_initial_solution(config.n_agents, config.n_paths)
-    initial_collisions = int(lns.solution_cmatrix(cmatrix, solution).sum() // 2)
-    _, collisions, _, _ = lns.run_parallel(
-        cmatrix=cmatrix,
-        solution=solution,
-        collisions=initial_collisions,
-        config=config,
-        n_threads=params["n_threads"],
-        n_seconds=params["n_seconds"],
-        optimal=0,
-    )
-
-    # solution = research.solve_ortools(cmatrix, config.n_agents, config.n_paths)
-    # collisions = int(lns.solution_cmatrix(cmatrix, solution).sum() // 2)
-
-    synthetic_results_file.write_text(
-        json.dumps({"density": real_density, "collisions": collisions})
-    )
-
-if __name__ == '__main__':
-    config = {
-        "n_agents": 40,
-        "n_paths": 6,
-        "destroy_method": "random",
-        "repair_method": "pp",
-        "neighborhood": 20,
-        "simulated_annealing": None,
-        "repetitions": 25,
-        "n_seconds": 60,
-        "n_threads": 1,
-        "cbs_max_expanded": 10000,
-        "lns_initial_iterations": 1000,
-        "map_file": "./random-32-32-10.map",
-        "agent_file": None,
-    }
-    random_maps_experiment(Path("/tmp/uniform"), True, 0, config, map_size=16, map_density=0.1, seed=42, overwrite=True)
+    if 0.015 <= real_density <= 0.025:
+        real_results_file.write_text(
+            json.dumps({"density": real_density, "collisions": int(collisions)})
+        )
+    return real_density

@@ -1,4 +1,9 @@
 import random
+from pathlib import Path
+
+import networkx as nx
+
+import scenario_generator
 
 
 def generate_random_map(map_type, map_height, map_width, density, obstacle_character="T", space_character="."):
@@ -25,3 +30,17 @@ def generate_random_map(map_type, map_height, map_width, density, obstacle_chara
 
     map_lines.append("".join([obstacle_character] * map_width))
     return "\n".join(map_lines)
+
+def generate_until_fully_connected():
+    for i in range(1000000):
+        with open("/tmp/map.map","w") as f:
+            lns_map = generate_random_map("FC", 256, 256, 0.1)
+            f.write(lns_map)
+        map_graph, _, _ = scenario_generator.load_map(Path("/tmp/map.map"))
+        print(f"Graph connected? {i}", nx.is_connected(map_graph))
+        if nx.is_connected(map_graph):
+            break
+
+
+if __name__ == '__main__':
+    generate_until_fully_connected()

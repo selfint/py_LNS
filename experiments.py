@@ -1144,6 +1144,11 @@ def uniform_experiment(
             n_agents = config.n_agents
 
         paths = path_generator.generate_paths(map_graph, agents, config.n_paths)
+        assert len(paths) == n_agents, (len(paths), n_agents)
+        assert all(len(p) == config.n_paths for p in paths), (
+            list(len(p) for p in paths),
+            config.n_paths,
+        )
 
         # build cmatrix
         cmatrix = lns.build_cmatrix_fast(paths)
@@ -1521,3 +1526,95 @@ def random_maps_experiment(
             json.dumps({"density": real_density, "collisions": int(collisions)})
         )
     return real_density
+
+
+class SyntheticExperimentParams(TypedDict):
+    n_agents_range: list[int]
+    n_paths: int
+    destroy_method: Literal["random"]
+    repair_method: Literal["pp"]
+    neighborhood: int
+    simulated_annealing: tuple[float, float, float] | None
+    density: float
+    iterations: int
+    repetitions: int
+
+
+def synthetic_experiment(
+    log_dir: Path,
+    index: int,
+    params: SyntheticExperimentParams,
+    seed: int,
+    overwrite: bool = False,
+    on_results=None,
+):
+    import torch
+    import json
+
+    methods = {"random": lns.random_destroy_method, "pp": lns.pp_repair_method}
+    log_dir.mkdir(exist_ok=True, parents=True)
+    experiment_dir = log_dir / f"experiment_{index}"
+    experiment_dir.mkdir(exist_ok=overwrite)
+
+    print(
+        f"Running uniform expirment {index}: dir={experiment_dir}"
+        f" {seed=} params={json.dumps(params)}"
+    )
+    (experiment_dir / "params.json").write_text(json.dumps(params))
+    np.random.seed(seed=seed)
+    torch.manual_seed(seed=seed)
+
+    iterations = params["iterations"]
+    expected_density = params["density"]
+
+    for n_agents in params["n_agents_range"]:
+        for i in range(params["repetitions"]):
+            results_file = experiment_dir / f"results_{n_agents}_{i}.json"
+            cmatrix_file = experiment_dir / f"cmatrix_{n_agents}_{i}.json"
+            cmatrix_viz_file = experiment_dir / f"cmatrix_viz_{n_agents}_{i}.txt"
+
+            config = lns.Configuration(
+                n_agents=n_agents,
+                n_paths=params["n_paths"],
+                destroy_method=[methods[params["destroy_method"]]],
+                repair_method=[methods[params["repair_method"]]],
+                neighborhood_size=params["neighborhood"],
+                simulated_annealing=params["simulated_annealing"],
+            )
+
+            # generate random collision matrix with mean density
+            size = config.n_agents * config.n_paths
+            indices = np.random.choice(
+                size * size, int(size * size * expected_density / 2), replace=False
+            )
+            cmatrix = torch.zeros(size, size, dtype=torch.bool)
+            cmatrix.view(-1)[indices] = True
+
+            # ensure cmatrix is symmetric
+            cmatrix = cmatrix | cmatrix.T
+
+            # get generate density
+            density = float(cmatrix.sum() / (cmatrix.shape[0] ** 2))
+            ratio = expected_density / density
+            print(f"{expected_density=:.4f} {density=:.4f} {ratio=:.4f}")
+
+            cmatrix_file.write_text(json.dumps(cmatrix.tolist()))
+            cmatrix_viz_file.write_text(
+                "\n".join(["".join(["#" if c else "_" for c in r]) for r in cmatrix])
+            )
+
+            # get collisions
+            _, collisions = lns.run_iterative(cmatrix, config, iterations, optimal=0)
+
+            results_file.write_text(
+                json.dumps(
+                    {
+                        "density": density,
+                        "collisions": collisions,
+                        "n_agents": n_agents,
+                    }
+                )
+            )
+
+            if on_results is not None:
+                on_results(log_dir)

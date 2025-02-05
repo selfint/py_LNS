@@ -46,13 +46,26 @@ def generate_paths(
         paths = []
         pbar.set_description(f"Generating agent {i+1}/{len(agents)} path {1}/{n_paths}")
         for j, path in enumerate(
-            islice(nx.shortest_simple_paths(map_graph, start, end), n_paths)
+            islice(nx.all_shortest_paths(map_graph, start, end), n_paths)
         ):
             paths.append([(x, y) for x, y in path])
             pbar.update(1)
             pbar.set_description(
                 f"Generating agent {i+1}/{len(agents)} path {j+1}/{n_paths}"
             )
+
+        if len(paths) < n_paths:
+            for j, path in enumerate(
+                islice(
+                    nx.shortest_simple_paths(map_graph, start, end),
+                    n_paths - len(paths),
+                )
+            ):
+                paths.append([(x, y) for x, y in path])
+                pbar.update(1)
+                pbar.set_description(
+                    f"Generating agent {i+1}/{len(agents)} path {j+1}/{n_paths}"
+                )
 
         agent_paths.append(paths)
 

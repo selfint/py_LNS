@@ -375,6 +375,25 @@ def run_iteration(
         return solution, collisions
 
 
+def run_iterative(
+    cmatrix: CMatrix,
+    config: Configuration,
+    iterations: int,
+    optimal: int = 0,
+):
+    solution = random_initial_solution(config.n_agents, config.n_paths)
+    collisions = int(solution_cmatrix(cmatrix, solution).sum() // 2)
+
+    pbar = tqdm(range(iterations), desc=f"LNS Collisions: {collisions}")
+    for _ in pbar:
+        solution, collisions = run_iteration(cmatrix, solution, int(collisions), config)
+        pbar.set_description(f"LNS Collisions: {collisions}")
+        if collisions == optimal:
+            return solution, collisions
+
+    return solution, collisions
+
+
 class SharedState(NamedTuple):
     cmatrix: CMatrix
     solution: Solution

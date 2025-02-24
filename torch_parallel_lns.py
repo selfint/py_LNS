@@ -77,7 +77,6 @@ class RepairMethod(Protocol):
         raise NotImplementedError()
 
 
-
 def build_cost_matrix(agents: list[Agent], device="cpu") -> CMatrix:
     """
     Build a collision matrix for all agent paths.
@@ -90,19 +89,34 @@ def build_cost_matrix(agents: list[Agent], device="cpu") -> CMatrix:
     return cost_matrix
 
 
+def build_cost_matrix_from_paths(
+    paths: list[list[tuple[int, int]]], device="cpu"
+) -> CMatrix:
+    """
+    Build a collision matrix for all agent paths.
+    """
+
+    cost_matrix = [[len(path) for path in agent_paths] for agent_paths in paths]
+
+    cost_matrix = torch.tensor(cost_matrix, device=device)
+
+    return cost_matrix
+
+
 def build_cmatrix(agents: list[Agent], device="cpu") -> CMatrix:
     """
     Build a collision matrix for all agent paths.
     """
 
-    n_agents = len(agents)
-    n_paths = agents[0].n_paths
+    paths = [a.paths for a in agents]
+
+    n_agents = len(paths)
+    n_paths = len(paths[0])
 
     vertices = defaultdict(set)
     edges = defaultdict(set)
-    for agent in agents:
-        agent_id = agent.id - 1
-        for path_id, locations in enumerate(agent.paths):
+    for agent_id, agent_paths in enumerate(tqdm(paths, desc="Scanning paths")):
+        for path_id, locations in enumerate(agent_paths):
             for vertex, edge in iter_path(locations):  # type: ignore
                 vertices[vertex].add((agent_id, path_id))
 
@@ -112,7 +126,11 @@ def build_cmatrix(agents: list[Agent], device="cpu") -> CMatrix:
 
     size = n_agents * n_paths
     path_collisions = np.zeros((size, size), dtype=np.int16)
-    for group in itertools.chain(vertices.values(), edges.values()):
+    for group in tqdm(
+        itertools.chain(vertices.values(), edges.values()),
+        total=len(vertices) + len(edges),
+        desc="Building cmatrix",
+    ):
         for (a_agent, a_path), (b_agent, b_path) in itertools.combinations(group, 2):
             if a_agent == b_agent:
                 continue
@@ -128,19 +146,18 @@ def build_cmatrix(agents: list[Agent], device="cpu") -> CMatrix:
     return path_collisions
 
 
-def build_cmatrix_fast(agents: list[Agent], device="cpu") -> CMatrix:
+def build_cmatrix_fast(paths: list[list[tuple[int, int]]], device="cpu") -> CMatrix:
     """
     Build a collision matrix for all agent paths.
     """
 
-    n_agents = len(agents)
-    n_paths = agents[0].n_paths
+    n_agents = len(paths)
+    n_paths = len(paths[0])
 
     vertices = defaultdict(set)
     edges = defaultdict(set)
-    for agent in tqdm(agents, desc="Scanning paths"):
-        agent_id = agent.id - 1
-        for path_id, locations in enumerate(agent.paths):
+    for agent_id, agent_paths in enumerate(tqdm(paths, desc="Scanning paths")):
+        for path_id, locations in enumerate(agent_paths):
             for vertex, edge in iter_path(locations):  # type: ignore
                 vertices[vertex].add((agent_id, path_id))
 
@@ -149,6 +166,8 @@ def build_cmatrix_fast(agents: list[Agent], device="cpu") -> CMatrix:
                     edges[edge.reverse()].add((agent_id, path_id))
 
     size = n_agents * n_paths
+
+    # numpy is faster than torch for these kinds of operations
     path_collisions = np.zeros((size, size), dtype=np.int8)
 
     # print matrix mem usage in megabytes
@@ -161,14 +180,16 @@ def build_cmatrix_fast(agents: list[Agent], device="cpu") -> CMatrix:
 
     for group in tqdm(groups, desc="Building cmatrix"):
         agents = group[:, 0]
-        paths = group[:, 1]
+        paths = group[:, 1]  # type: ignore
         ids = agents * n_paths + paths
         path_collisions[ids[:, None], ids] = 1
 
-    # set diagonal to zero
-    np.fill_diagonal(path_collisions, 0)
-
     path_collisions = torch.tensor(path_collisions, dtype=torch.bool, device=device)
+
+    # remove agent collisions with themselves
+    view = path_collisions.view((n_agents, n_paths, n_agents, n_paths))
+    for agent in range(n_agents):
+        view[agent, :, agent, :] = 0
 
     return path_collisions
 
@@ -178,7 +199,6 @@ def solution_cmatrix(cmatrix: CMatrix, solution: Solution) -> CMatrix:
     Generate a solution collision matrix from a slice of the cmatrix.
     """
     solution_idx = torch.nonzero(solution.ravel(), as_tuple=True)[0]
-
     return cmatrix[solution_idx][:, solution_idx]
 
 
@@ -321,29 +341,31 @@ class Configuration(NamedTuple):
     destroy_method: list[DestroyMethod]
     repair_method: list[RepairMethod]
     neighborhood_size: int
-    simulated_annealing: tuple[float, float, float] or None = None
-    dynamic_neighborhood: int or None = None
+    simulated_annealing: tuple[float, float, float] | None = None
+    dynamic_neighborhood: int | None = None
 
 
 def run_iteration(
     cmatrix: CMatrix,
     solution: Solution,
     collisions: int,
-    c: Configuration,
+    config: Configuration,
 ) -> tuple[Solution, int]:
     """
     Runs iteration.
     """
 
-    n_subset = c.neighborhood_size
-    if c.dynamic_neighborhood is not None:
-        n_subset = int(torch.randint(c.dynamic_neighborhood, n_subset + 1, (1,)).item())
+    n_subset = config.neighborhood_size
+    if config.dynamic_neighborhood is not None:
+        n_subset = int(
+            torch.randint(config.dynamic_neighborhood, n_subset + 1, (1,)).item()
+        )
 
-    neighborhood = c.destroy_method[0](
-        cmatrix, solution, c.n_agents, c.n_paths, n_subset
+    neighborhood = config.destroy_method[0](
+        cmatrix, solution, config.n_agents, config.n_paths, n_subset
     )
-    new_solution = c.repair_method[0](
-        cmatrix, c.n_agents, c.n_paths, solution, neighborhood
+    new_solution = config.repair_method[0](
+        cmatrix, config.n_agents, config.n_paths, solution, neighborhood
     )
     new_collisions = solution_cmatrix(cmatrix, new_solution).sum() // 2
 
@@ -353,108 +375,147 @@ def run_iteration(
         return solution, collisions
 
 
+def run_iterative(
+    cmatrix: CMatrix,
+    config: Configuration,
+    iterations: int,
+    optimal: int = 0,
+):
+    solution = random_initial_solution(config.n_agents, config.n_paths)
+    collisions = int(solution_cmatrix(cmatrix, solution).sum() // 2)
+
+    pbar = tqdm(range(iterations), desc=f"LNS Collisions: {collisions}")
+    for _ in pbar:
+        solution, collisions = run_iteration(cmatrix, solution, int(collisions), config)
+        pbar.set_description(f"LNS Collisions: {collisions}")
+        if collisions == optimal:
+            return solution, collisions
+
+    return solution, collisions
+
+
+class SharedState(NamedTuple):
+    cmatrix: CMatrix
+    solution: Solution
+    collisions: torch.Tensor
+    iterations: torch.Tensor
+    best_solution: Solution
+    best_collisions: torch.Tensor
+    lock: mp.Lock  # type: ignore
+
+
 def worker(
-    shared_cmatrix: CMatrix,
-    shared_solution: Solution,
-    shared_collisions: torch.Tensor,
-    shared_iterations: torch.Tensor,
-    lock,
-    c: Configuration,
+    shared: SharedState,
+    config: Configuration,
     thread_id: int,
 ):
     torch.manual_seed(thread_id)
 
-    with lock:
-        thread_solution = shared_solution.clone()
-        thread_collisions = shared_collisions.clone()
+    with shared.lock:
+        solution = shared.solution.clone()
+        collisions = shared.collisions.clone()
 
     # bench = Benchmark(n=10_000)
 
-    destroy_method = c.destroy_method[thread_id % len(c.destroy_method)]
-    repair_method = c.repair_method[thread_id % len(c.repair_method)]
+    destroy_method = config.destroy_method[thread_id % len(config.destroy_method)]
+    repair_method = config.repair_method[thread_id % len(config.repair_method)]
 
     while True:
         # with bench.benchmark(label="Worker iteration"):
-        n_subset = c.neighborhood_size
-        if c.dynamic_neighborhood is not None:
+        n_subset = config.neighborhood_size
+        if config.dynamic_neighborhood is not None:
             n_subset = int(
-                torch.randint(c.dynamic_neighborhood, n_subset + 1, (1,)).item()
+                torch.randint(config.dynamic_neighborhood, n_subset + 1, (1,)).item()
             )
 
         neighborhood = destroy_method(
-            shared_cmatrix, thread_solution, c.n_agents, c.n_paths, n_subset
+            shared.cmatrix, solution, config.n_agents, config.n_paths, n_subset
         )
-        thread_solution = repair_method(
-            shared_cmatrix, c.n_agents, c.n_paths, thread_solution, neighborhood
+        solution = repair_method(
+            shared.cmatrix,
+            config.n_agents,
+            config.n_paths,
+            solution,
+            neighborhood,
         )
-        sol_cmatrix = solution_cmatrix(shared_cmatrix, thread_solution)
-        # thread_collisions = torch.any(sol_cmatrix, dim=1).sum().item()
-        thread_collisions = sol_cmatrix.sum() // 2
+        sol_cmatrix = solution_cmatrix(shared.cmatrix, solution)
+        collisions = sol_cmatrix.sum() // 2
 
-        with lock:
-            shared_iterations += 1
+        with shared.lock:
+            shared.iterations.add_(1)
 
             # Exponential decay on simulated annealing probability
-            if c.simulated_annealing is not None:
-                A, k, s = c.simulated_annealing
-                decay_factor = A * torch.exp(k * -shared_iterations / s)
+            if config.simulated_annealing is not None:
+                A, k, s = config.simulated_annealing
+                decay_factor = A * torch.exp(k * -shared.iterations / s)
                 simulated_annealing = (
-                    c.simulated_annealing and torch.rand(1).item() < decay_factor
+                    config.simulated_annealing and torch.rand(1).item() < decay_factor
                 )
             else:
                 simulated_annealing = False
 
-            if thread_collisions < shared_collisions or simulated_annealing:
-                shared_solution[:] = thread_solution
-                shared_collisions.copy_(thread_collisions)
+            # record best all-time solution
+            if collisions < shared.best_collisions:
+                shared.best_collisions.copy_(collisions)
+                shared.best_solution[:] = solution
+
+            # update current solution, optionally with simulated annealing
+            if collisions < shared.collisions or simulated_annealing:
+                shared.solution[:] = solution
+                shared.collisions.copy_(collisions)
             else:
-                thread_solution = shared_solution.clone()
-                thread_collisions = shared_collisions.clone()
+                solution = shared.solution.clone()
+                collisions = shared.collisions.clone()
 
 
 def run_parallel(
     cmatrix: CMatrix,
     solution: Solution,
     collisions: int,
-    c: Configuration,
+    config: Configuration,
     n_threads: int,
     n_seconds: int,
-    optimal: int or None = None,
+    optimal: int | None = None,
 ) -> tuple[Solution, int, list[float], list[int]]:
 
     shared_cmatrix = cmatrix.share_memory_()
-    shared_solution = solution.share_memory_()
+    shared_solution = solution.clone().share_memory_()
     shared_collisions = torch.tensor(
         collisions, dtype=torch.int32, device=cmatrix.device
     ).share_memory_()
     shared_iterations = torch.tensor(0).share_memory_()
+    shared_best_solution = solution.clone().share_memory_()
+    shared_best_collisions = torch.tensor(
+        collisions, dtype=torch.int32, device=cmatrix.device
+    ).share_memory_()
 
     lock = mp.Lock()
 
-    args = (
+    shared = SharedState(
         shared_cmatrix,
         shared_solution,
         shared_collisions,
         shared_iterations,
+        shared_best_solution,
+        shared_best_collisions,
         lock,
-        c,
     )
 
     workers = []
     for thread_id in range(n_threads):
-        p = mp.Process(target=worker, args=(*args, thread_id))
+        p = mp.Process(target=worker, args=(shared, config, thread_id))
         workers.append(p)
         p.start()
 
     start = time.time()
     log_values = []
     sample_rate = 10 / 1_000  # 10 ms
-    min_collisions = float("inf")
     with tqdm(total=n_seconds) as pbar:
         while (time_passed := time.time() - start) < n_seconds:
             with lock:
                 iterations = shared_iterations.item()
                 cols = int(shared_collisions.item())
+                best_cols = int(shared_best_collisions.item())
 
                 # if 0 < cols <= 10:
                 #     sol_cmatrix = solution_cmatrix(shared_cmatrix, shared_solution)
@@ -463,14 +524,12 @@ def run_parallel(
                 # print(colliding_agents.tolist())
                 # print()
 
-            min_collisions = min(min_collisions, cols)
-
-            log_values.append(((time_passed * 1_000, cols)))
+            log_values.append(((time_passed * 1_000, best_cols)))
             pbar.set_description(
-                f"Agents: {c.n_agents: 2} Min: {min_collisions} Iterations: {iterations} Cols: {cols}"
+                f"Agents: {config.n_agents: 2} Iterations: {iterations} Cols: {cols} Best: {best_cols}"
             )
 
-            if optimal is not None and cols <= optimal:
+            if optimal is not None and best_cols <= optimal:
                 break
 
             time.sleep(sample_rate)
@@ -483,6 +542,11 @@ def run_parallel(
     timestamps_ms = [t for t, _ in log_values]
     log_collisions = [c for _, c in log_values]
 
-    sol = shared_solution.argmax(dim=1)
+    sol = shared_best_solution.argmax(dim=1)
 
-    return shared_solution, int(shared_collisions.item()), timestamps_ms, log_collisions
+    return (
+        shared_best_solution,
+        int(shared_best_collisions.item()),
+        timestamps_ms,
+        log_collisions,
+    )

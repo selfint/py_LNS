@@ -10,15 +10,17 @@ import sys
 
 
 class CBS:
-    def __init__(self, instance : instance.instance, initial_solution = None, verbose = True):
+    def __init__(self, instance : instance.instance, initial_solution = None, verbose = True, subset = None):
         self.open = set()
         self.closed = set()
         self.instance = instance
         self.cmatrix = torch_parallel_lns.build_cmatrix(list(self.instance.agents.values()))
         self.cost_matrix = torch_parallel_lns.build_cost_matrix(list(self.instance.agents.values())).int()
         self.initial_solution = initial_solution
+        self.subset = subset
         self.verbose = verbose
         self.expanded = 0
+        self.expanded_limit = 300
 
     def search(self):
         initial_node = CTNode(self.instance.num_agents, self.instance.n_paths)
@@ -28,8 +30,10 @@ class CBS:
         initial_node.cost = self.compute_solution_cost(initial_node.solution)
 
         solution_matrix = torch_parallel_lns.solution_cmatrix(self.cmatrix, initial_node.solution)
-        initial_node.collisions = solution_matrix.nonzero()
-        initial_node.col_count = len(initial_node.collisions)//2
+        collisions, col_count = self.compute_collision_matrix(solution_matrix)
+        initial_node.collisions = collisions
+        initial_node.col_count = col_count
+        print(f'Initial cols: {col_count}')
         best_sol = initial_node
 
         # Line 4 of CBS
@@ -43,7 +47,7 @@ class CBS:
             # Line 7 of CBS
             self.open -= {p}
             self.expanded += 1
-            if self.expanded > 10000:
+            if self.expanded > self.expanded_limit:
                 return best_sol.solution, best_sol.col_count
 
             if (len(self.open) & (len(self.open) - 1) == 0) and len(self.open) != 0 and self.verbose:
@@ -53,8 +57,9 @@ class CBS:
                 pass#print(f'**** popped node with cost {p.cost} from open of size {len(self.open)}')
 
             solution_matrix = torch_parallel_lns.solution_cmatrix(self.cmatrix, p.solution.clip(0,1))
-            p.collisions = solution_matrix.nonzero()
-            p.col_count = len(p.collisions) // 2
+            collisions, col_count = self.compute_collision_matrix(solution_matrix)
+            p.collisions = collisions
+            p.col_count = col_count
 
             if best_sol == None or best_sol.col_count > p.col_count:
                 if self.verbose:
@@ -74,10 +79,19 @@ class CBS:
 
             # Line 10 of CBS
             #c = p.collisions[torch.randperm(p.col_count)[0]].tolist()
-            c = p.collisions[0].tolist()
+            remaining_cols = [c.tolist() for c in p.collisions if c.tolist() not in p.allowed_collisions]
+            if len(remaining_cols) == 0:
+                continue
+            c = remaining_cols[0]
+
 
             # Line 11 of CBS
             for agent_id, other_agent in zip(c, c[-1::-1]):
+                if self.subset is not None and agent_id not in self.subset:
+                    a = deepcopy(p)
+                    a.allowed_collisions += [c]
+                    self.open |= {a}
+                    continue
                 # Lines 12-15 of CBS
                 a = deepcopy(p)
                 a.add_restriction(agent_id,a.get_path_id(agent_id), other_agent, a.get_path_id(other_agent))
@@ -96,6 +110,13 @@ class CBS:
     def compute_solution_cost(self, solution : torch_parallel_lns.Solution):
         cost_matrix = solution @ (self.cost_matrix.T)
         return torch.diag(cost_matrix).sum().item()
+    def compute_collision_matrix(self, solution_matrix):
+        if self.subset is not None:
+            collisions = [c for c in solution_matrix.nonzero() if (c[0] in self.subset or c[1] in self.subset) and c[0] < c[1]]
+        else:
+            collisions = [c for c in solution_matrix.nonzero() if c[0] < c[1]]
+        col_count = len(collisions)
+        return collisions, col_count
     def compute_collisions_between_path_and_agent(self, agent_1_id, agent1_path_id, agent_2_id):
         cmatrix_view = self.cmatrix.view(self.instance.num_agents, self.instance.n_paths, self.instance.num_agents, self.instance.n_paths)
         return cmatrix_view[agent_1_id,agent1_path_id,agent_2_id,:]
@@ -112,6 +133,8 @@ class CTNode:
         self._solution[:, 0] = 1
 
         self._restrictions = {i: [] for i in range(num_agents)}
+
+        self.allowed_collisions = []
 
         self.cost = 0
         self.collisions = 0

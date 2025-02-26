@@ -15,7 +15,11 @@ def _generate_agent_paths(
     start, end = agent
     paths = []
 
-    pbar = tqdm.tqdm(total=n_paths, desc=f"Agent {index}", unit="path")
+    loc1 = agent.start
+    loc2 = agent.end
+    dist = abs(loc1[0] - loc2[0]) + abs(loc1[1] - loc2[1])
+
+    pbar = tqdm.tqdm(total=n_paths, desc=f"Agent {index} {dist=}", unit="path")
     for path in islice(nx.shortest_simple_paths(map_graph, start, end), n_paths):
         paths.append([(x, y) for x, y in path])
         pbar.update(1)
@@ -45,7 +49,6 @@ def generate_paths(
         raise ValueError("The map graph is not fully connected.")
 
     with ProcessPoolExecutor() as executor:
-        # executor.map returns results in the order of the input agents
         futures: list[Future] = []
         for i, agent in enumerate(agents):
             agent_paths = executor.submit(
@@ -59,7 +62,7 @@ def generate_paths(
 
         paths = []
         for future in futures:
-            paths.extend(future.result())
+            paths.append(future.result())
 
     return paths
 

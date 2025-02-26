@@ -1253,7 +1253,7 @@ def uniform_experiment(
 
     # get generate density
     synthetic_density = float(cmatrix.sum() / (cmatrix.shape[0] ** 2))
-    ratio = real_density / synthetic_density
+    ratio = real_density / (synthetic_density + 1e-6)
     print(f"{real_density=:.4f} {synthetic_density=:.4f} {ratio=:.4f}")
 
     synthetic_cmatrix_file.write_text(json.dumps(cmatrix.tolist()))

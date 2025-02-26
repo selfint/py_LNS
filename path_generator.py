@@ -1,13 +1,26 @@
 import json
 from itertools import islice
 from pathlib import Path
-import threading
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, Future
 
 import networkx as nx
 import tqdm
 
 from scenario_generator import load_map, Agent, load_agents
+
+
+def _generate_agent_paths(
+    map_graph: nx.Graph, agent: Agent, n_paths: int, index: int
+) -> list[list[tuple[int, int]]]:
+    start, end = agent
+    paths = []
+
+    pbar = tqdm.tqdm(total=n_paths, desc=f"Agent {index}", unit="path")
+    for path in islice(nx.shortest_simple_paths(map_graph, start, end), n_paths):
+        paths.append([(x, y) for x, y in path])
+        pbar.update(1)
+
+    return paths
 
 
 def generate_paths(
@@ -31,34 +44,24 @@ def generate_paths(
     if not nx.is_connected(map_graph):
         raise ValueError("The map graph is not fully connected.")
 
-    total_paths = len(agents) * n_paths
-    pbar = tqdm.tqdm(total=total_paths, unit="path")
-    pbar_lock = threading.Lock()
-
-    def generate_agent_paths(agent: Agent) -> list[list[tuple[int, int]]]:
-        start, end = agent
-        paths = []
-        # First, try all shortest paths
-        for path in islice(nx.all_shortest_paths(map_graph, start, end), n_paths):
-            paths.append([(x, y) for x, y in path])
-            with pbar_lock:
-                pbar.update(1)
-        # If fewer than n_paths were found, supplement with simple shortest paths
-        if len(paths) < n_paths:
-            for path in islice(
-                nx.shortest_simple_paths(map_graph, start, end), n_paths - len(paths)
-            ):
-                paths.append([(x, y) for x, y in path])
-                with pbar_lock:
-                    pbar.update(1)
-        return paths
-
-    with ThreadPoolExecutor() as executor:
+    with ProcessPoolExecutor() as executor:
         # executor.map returns results in the order of the input agents
-        agent_paths = list(executor.map(generate_agent_paths, agents))
+        futures: list[Future] = []
+        for i, agent in enumerate(agents):
+            agent_paths = executor.submit(
+                _generate_agent_paths,
+                map_graph,
+                agent,
+                n_paths,
+                i,
+            )
+            futures.append(agent_paths)
 
-    pbar.close()
-    return agent_paths
+        paths = []
+        for future in futures:
+            paths.extend(future.result())
+
+    return paths
 
 
 def main(map_file: Path, agents_file: Path, n_paths: int, output_file: Path) -> None:

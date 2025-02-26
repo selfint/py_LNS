@@ -72,11 +72,11 @@ def create_graph_from_map(map, num_of_rows, num_of_cols, verbose = False):
     nodes = [tuple(loc) for loc in np.argwhere(map>0).tolist()]
     graph.remove_nodes_from(nodes)
 
-    if verbose:
+    '''if verbose:
         plt.figure(figsize=(6, 6))
         pos = {(x, y): (y, -x) for x, y in graph.nodes()}
         nx.draw(graph, pos=pos,
                 node_color='lightgreen',
                 node_size=60)
-        plt.show()
+        plt.show()'''
     return graph

@@ -4,6 +4,8 @@ import instance
 import PathTable
 import numpy as np
 import itertools
+import CBS
+import torch
 
 from benchmark_utils import benchmark
 
@@ -135,3 +137,30 @@ class RankPPNeighborhoodRepair(NeighborhoodRepair):
             self.reroute_agent(chosen_agent_id, path_costs_dict)
 
             self.temp_subset.remove(chosen_agent_id)
+
+class CBSNeighborhoodRepair(NeighborhoodRepair):
+
+    def reroute_agents(self, agent_path_selection):
+        self.destroy_neighborhood()
+        for agent_id, path_id in zip(self.agent_subset, agent_path_selection):
+            path = self.instance.agents[agent_id].paths[path_id]
+            self.path_table.insert_path(agent_id, path)
+            self.instance.agents[agent_id].path_id = path_id
+
+    def format_solution_to_paths(self, cbs_solution):
+        path_ids = cbs_solution[self.agent_subset_normalized].argmax(-1).tolist()
+        self.reroute_agents(path_ids)
+
+    def run(self):
+        self.agent_subset_normalized = [a_id-1 for a_id in self.agent_subset]
+        if self.verbose:
+            print(f'\n**** Starting CBS search ****')
+
+        solution = torch.tensor(
+            [self.instance.agents[i + 1].path_id for i in range(self.instance.num_agents)]
+        )
+        solution_one_hot = torch.nn.functional.one_hot(solution, self.instance.n_paths)
+        solver = CBS.CBS(self.instance, solution_one_hot, self.verbose, self.agent_subset_normalized)
+        cbs_solution, cbs_lns_col_count = solver.search()
+        self.format_solution_to_paths(cbs_solution)
+

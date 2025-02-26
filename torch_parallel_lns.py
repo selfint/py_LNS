@@ -341,8 +341,8 @@ class Configuration(NamedTuple):
     destroy_method: list[DestroyMethod]
     repair_method: list[RepairMethod]
     neighborhood_size: int
-    simulated_annealing: tuple[float, float, float] | None = None
-    dynamic_neighborhood: int | None = None
+    simulated_annealing: tuple[float, float, float] or None = None
+    dynamic_neighborhood: int or None = None
 
 
 def run_iteration(
@@ -475,7 +475,7 @@ def run_parallel(
     config: Configuration,
     n_threads: int,
     n_seconds: int,
-    optimal: int | None = None,
+    optimal: int or None = None,
 ) -> tuple[Solution, int, list[float], list[int]]:
 
     shared_cmatrix = cmatrix.share_memory_()

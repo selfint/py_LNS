@@ -499,6 +499,80 @@ def cbs_lns_exp(map_path, agent_path, solver_name, verbose=True, n_paths=15, tem
     cbs.search()
 
 
+def cbs_repair_exp(map_path, agent_path, solver_name, verbose=True, n_paths=15, temp=1):
+    s = instance.instance(map_path, agent_path, solver_name, verbose, n_paths, temp)
+    t = PathTable(s.num_of_rows, s.num_of_cols, num_of_agents=s.num_agents)
+    solvers.random_initial_solution(s, t)
+    solution = torch.tensor([s.agents[i + 1].path_id for i in range(s.num_agents)])
+    solution_one_hot = torch.nn.functional.one_hot(solution, n_paths)
+    cbs = CBS.CBS(s, solution_one_hot, True, [1,2,3,5])
+    cbs_sol, cbs_col_count = cbs.search()
+    print('hi')
+
+
+def CBS_lns_solver_cols_exp(
+    map_path, agent_path, solver_name, verbose=False, n_paths=20, temp=1
+):
+    s = instance.instance(map_path, agent_path, solver_name, n_paths=n_paths)
+    agents_list = range(3, 64, 5)
+    lns_collisions = []
+    cbs_collisions = []
+    cbs_lns_collisions = []
+    lns_cbs_solver_collisions = []
+    lns_cbs_init_and_solver_collisions = []
+    for num_agents in agents_list:
+        with open(agent_path) as agent_file:
+            head = [next(agent_file) for _ in range(num_agents + 1)]
+            with open("temp.txt", "w") as temp:
+                for line in head:
+                    temp.write(line)
+        s_temp = instance.instance(map_path, "temp.txt", solver_name, n_paths=n_paths)
+        t = PathTable(
+            s_temp.num_of_rows, s_temp.num_of_cols, num_of_agents=s_temp.num_agents
+        )
+
+        solver = CBS.CBS(s_temp, verbose=verbose)
+        _, cbs_col_count = solver.search()
+        cbs_collisions += [cbs_col_count]
+
+
+        solver_t, _ = solvers.generate_random_random_solution_iterative(s_temp, t)
+        lns_num_cols = solver_t.num_collisions
+        lns_collisions += [lns_num_cols]
+        solution = torch.tensor(
+            [s_temp.agents[i + 1].path_id for i in range(s_temp.num_agents)]
+        )
+        solution_one_hot = torch.nn.functional.one_hot(solution, n_paths)
+        solver = CBS.CBS(s_temp, solution_one_hot, verbose=verbose)
+        solver.expanded_limit = 2000
+        _, cbs_lns_col_count = solver.search()
+        cbs_lns_collisions += [cbs_lns_col_count]
+
+        s_temp = instance.instance(map_path, "temp.txt", solver_name, n_paths=n_paths)
+        t = PathTable(
+            s_temp.num_of_rows, s_temp.num_of_cols, num_of_agents=s_temp.num_agents
+        )
+        solver_t, _ = solvers.generate_random_random_solution_iterative(s_temp, t, low_level_solver_name='cbs')
+        lns_cbs_solver_num_cols = solver_t.num_collisions
+        lns_cbs_solver_collisions += [lns_cbs_solver_num_cols]
+
+        solution = torch.tensor(
+            [s_temp.agents[i + 1].path_id for i in range(s_temp.num_agents)]
+        )
+        solution_one_hot = torch.nn.functional.one_hot(solution, n_paths)
+        solver = CBS.CBS(s_temp, solution_one_hot, verbose=verbose)
+        solver.expanded_limit = 2000
+        _, lns_cbs_init_and_solver_col_count = solver.search()
+        lns_cbs_init_and_solver_collisions += [lns_cbs_init_and_solver_col_count]
+    title = "Collisions in CBS and CBSw/LNSInit"
+    x_axis = agents_list
+    y_axis = [cbs_collisions, lns_collisions, cbs_lns_collisions, lns_cbs_solver_collisions, lns_cbs_init_and_solver_collisions]
+    x_axis_label = "Number of agents"
+    y_axis_label = "collision counts"
+    y_labels = ["CBS", "LNS", "CBSw/LNSInit", "LNSw/CBSRepair", "LNSw/CBSRepair&Init"]
+    plot_line_graphs(x_axis, y_axis, title, x_axis_label, y_axis_label, y_labels)
+
+
 def stateless_solver_test_exp(
     map_path, agent_path, n_paths, test_iterations, temp, verbose
 ):
@@ -623,7 +697,7 @@ def stateless_solver_no_parallelism_exp(
     n_seconds,
     config: lns.Configuration,
     results_dir: Path,
-    optimal: int | None = None,
+    optimal: int or None = None,
 ):
     import time
     import json
@@ -711,8 +785,8 @@ def stateless_solver_parallelism_exp(
     n_seconds,
     config: lns.Configuration,
     n_threads,
-    results_dir: Path | None = None,
-    optimal: int | None = None,
+    results_dir: Path or None = None,
+    optimal: int or None = None,
 ):
     """
     NOTE: Uses multiprocessing, must be executed after if __name__ == "__main__"
@@ -1064,14 +1138,14 @@ class UniformExperimentParams(TypedDict):
     destroy_method: Literal["random"]
     repair_method: Literal["pp"]
     neighborhood: int
-    simulated_annealing: tuple[float, float, float] | None
+    simulated_annealing: tuple[float, float, float] or None
     repetitions: int
     n_seconds: int
     n_threads: int
     cbs_max_expanded: int
     lns_initial_iterations: int
     map_file: str
-    agent_file: str | None
+    agent_file: str or None
 
 
 def uniform_experiment(
@@ -1288,7 +1362,7 @@ class DensityExperimentParams(TypedDict):
     destroy_method: Literal["random"]
     repair_method: Literal["pp"]
     neighborhood: int
-    simulated_annealing: tuple[float, float, float] | None
+    simulated_annealing: tuple[float, float, float] or None
     repetitions: int
     n_iterations: int
     map_file: str
@@ -1534,7 +1608,7 @@ class SyntheticExperimentParams(TypedDict):
     destroy_method: Literal["random"]
     repair_method: Literal["pp"]
     neighborhood: int
-    simulated_annealing: tuple[float, float, float] | None
+    simulated_annealing: tuple[float, float, float] or None
     density: float
     iterations: int
     repetitions: int

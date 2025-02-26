@@ -2,7 +2,7 @@ import PathTable
 import instance
 import PathTable
 import numpy as np
-from LowLevelSolvers import PPNeighborhoodRepair, ExhaustiveNeighborhoodRepair, RankPPNeighborhoodRepair, NeighborhoodRepair
+from LowLevelSolvers import PPNeighborhoodRepair, ExhaustiveNeighborhoodRepair, RankPPNeighborhoodRepair, NeighborhoodRepair, CBSNeighborhoodRepair
 import DestroyMethods
 import copy
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
@@ -15,9 +15,9 @@ def random_initial_solution(instance: instance.instance, path_table: PathTable.P
         instance.agents[agent_id].path_id = int(path_idx)
     path_table.calculate_makespan()
 
-def generate_random_random_solution_iterative(instance: instance.instance, path_table: PathTable.PathTable, iterations = 1000):
+def generate_random_random_solution_iterative(instance: instance.instance, path_table: PathTable.PathTable, iterations = 200, low_level_solver_name = 'pp'):
     random_initial_solution(instance, path_table) # Choose random paths as initial solution
-    solver = IterativeRandomLNS(instance, path_table, 3, num_iterations = iterations)
+    solver = IterativeRandomLNS(instance, path_table, 3, num_iterations = iterations, low_level_solver_name=low_level_solver_name)
     return solver.run()
 class RandomPP:
     def __init__(self, instance: instance.instance, path_table:PathTable.PathTable):
@@ -63,7 +63,8 @@ class IterativeRandomLNS:
 
         solvers_list = {'pp': PPNeighborhoodRepair,
                         'rank-pp': RankPPNeighborhoodRepair,
-                        'exhaustive': ExhaustiveNeighborhoodRepair}
+                        'exhaustive': ExhaustiveNeighborhoodRepair,
+                        'cbs': CBSNeighborhoodRepair}
         self.low_level_solver = solvers_list[low_level_solver_name]
         self.random_seed = random_seed
 

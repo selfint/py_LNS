@@ -10,20 +10,21 @@ import sys
 
 
 class CBS:
-    def __init__(self, instance : instance.instance, initial_solution = None, verbose = True, subset = None):
+    def __init__(self, cmatrix, cost_matrix, n_agents, n_paths, initial_solution = None, verbose = True, subset = None):
         self.open = set()
         self.closed = set()
-        self.instance = instance
-        self.cmatrix = torch_parallel_lns.build_cmatrix(list(self.instance.agents.values()))
-        self.cost_matrix = torch_parallel_lns.build_cost_matrix(list(self.instance.agents.values())).int()
+        self.cmatrix = cmatrix
+        self.cost_matrix = cost_matrix
         self.initial_solution = initial_solution
         self.subset = subset
         self.verbose = verbose
         self.expanded = 0
         self.expanded_limit = 300
+        self.n_agents = n_agents
+        self.n_paths = n_paths
 
     def search(self):
-        initial_node = CTNode(self.instance.num_agents, self.instance.n_paths)
+        initial_node = CTNode(self.n_agents, self.n_paths)
         if self.initial_solution is not None:
             initial_node.solution = self.initial_solution.int()
         # Line 3 of CBS
@@ -118,7 +119,7 @@ class CBS:
         col_count = len(collisions)
         return collisions, col_count
     def compute_collisions_between_path_and_agent(self, agent_1_id, agent1_path_id, agent_2_id):
-        cmatrix_view = self.cmatrix.view(self.instance.num_agents, self.instance.n_paths, self.instance.num_agents, self.instance.n_paths)
+        cmatrix_view = self.cmatrix.view(self.n_agents, self.n_paths, self.n_agents, self.n_paths)
         return cmatrix_view[agent_1_id,agent1_path_id,agent_2_id,:]
 
 class CTNode:
@@ -181,3 +182,29 @@ class CTNode:
     def __lt__(self, other):
         #return self.cost < other.cost or (self.cost == other.cost and self.col_count < other.col_count)
         return self.col_count < other.col_count or (self.col_count == other.col_count and self.cost < other.cost)
+
+
+class CBSRepairMethod(torch_parallel_lns.RepairMethod):
+    def __init__(self, cost_matrix) -> None:
+        self.cost_matrix = cost_matrix
+
+    def __call__(
+        self,
+        cmatrix: torch_parallel_lns.CMatrix,
+        n_agents: int,
+        n_paths: int,
+        solution: torch_parallel_lns.Solution,
+        neighborhood: torch_parallel_lns.Neighborhood,
+    ) -> torch_parallel_lns.Solution:
+        solver = CBS(
+            cmatrix,
+            self.cost_matrix,
+            n_agents,
+            n_paths,
+            initial_solution=solution,
+            verbose=False,
+            subset=neighborhood,
+        )
+
+        cbs_solution, cbs_lns_col_count = solver.search()
+        return cbs_solution

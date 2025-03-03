@@ -1,6 +1,7 @@
 import json
 from itertools import islice
 from pathlib import Path
+from concurrent.futures import ProcessPoolExecutor, Future
 
 import networkx as nx
 import tqdm
@@ -8,11 +9,29 @@ import tqdm
 from scenario_generator import load_map, Agent, load_agents
 
 
+def _generate_agent_paths(
+    map_graph: nx.Graph, agent: Agent, n_paths: int, index: int
+) -> list[list[tuple[int, int]]]:
+    start, end = agent
+    paths = []
+
+    loc1 = agent.start
+    loc2 = agent.end
+    dist = abs(loc1[0] - loc2[0]) + abs(loc1[1] - loc2[1])
+
+    pbar = tqdm.tqdm(total=n_paths, desc=f"Agent {index} {dist=}", unit="path")
+    for path in islice(nx.shortest_simple_paths(map_graph, start, end), n_paths):
+        paths.append([(x, y) for x, y in path])
+        pbar.update(1)
+
+    return paths
+
+
 def generate_paths(
     map_graph: nx.Graph, agents: list[Agent], n_paths: int
 ) -> list[list[tuple[int, int]]]:
     """
-    Generate multiple paths for a list of agents on a given map graph.
+    Generate multiple paths for a list of agents on a given map graph in parallel.
     Paths are generated in ascending length order.
 
     Parameters:
@@ -25,58 +44,33 @@ def generate_paths(
 
     Raises:
         ValueError: If the provided map graph is not fully connected.
-
-    Example:
-        >>> map_graph = nx.grid_2d_graph(5, 5)
-        >>> agents = [(0, 0), (4, 4)]
-        >>> n_paths = 3
-        >>> generate_paths(map_graph, agents, n_paths)
-        [
-            [[(0, 0), (0, 1), (0, 2)], [(0, 0), (1, 0), (1, 1)], ...],
-            [[(4, 4), (4, 3), (4, 2)], [(4, 4), (3, 4), (3, 3)], ...]
-        ]
     """
-
     if not nx.is_connected(map_graph):
         raise ValueError("The map graph is not fully connected.")
 
-    agent_paths = []
-    pbar = tqdm.tqdm(total=len(agents) * n_paths, unit="path")
-    for i, (start, end) in enumerate(agents):
-        paths = []
-        pbar.set_description(f"Generating agent {i+1}/{len(agents)} path {1}/{n_paths}")
-        for j, path in enumerate(
-            islice(nx.all_shortest_paths(map_graph, start, end), n_paths)
-        ):
-            paths.append([(x, y) for x, y in path])
-            pbar.update(1)
-            pbar.set_description(
-                f"Generating agent {i+1}/{len(agents)} path {j+1}/{n_paths}"
+    with ProcessPoolExecutor() as executor:
+        futures: list[Future] = []
+        for i, agent in enumerate(agents):
+            agent_paths = executor.submit(
+                _generate_agent_paths,
+                map_graph,
+                agent,
+                n_paths,
+                i,
             )
+            futures.append(agent_paths)
 
-        if len(paths) < n_paths:
-            for j, path in enumerate(
-                islice(
-                    nx.shortest_simple_paths(map_graph, start, end),
-                    n_paths - len(paths),
-                )
-            ):
-                paths.append([(x, y) for x, y in path])
-                pbar.update(1)
-                pbar.set_description(
-                    f"Generating agent {i+1}/{len(agents)} path {j+1}/{n_paths}"
-                )
+        paths = []
+        for future in futures:
+            paths.append(future.result())
 
-        agent_paths.append(paths)
-
-    return agent_paths
+    return paths
 
 
 def main(map_file: Path, agents_file: Path, n_paths: int, output_file: Path) -> None:
     map_graph, _, _ = load_map(map_file)
     agents = load_agents(agents_file)
     agent_paths = generate_paths(map_graph, agents, n_paths)
-
     output_file.write_text(json.dumps(agent_paths))
 
 

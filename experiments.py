@@ -511,8 +511,29 @@ def cbs_repair_exp(map_path, agent_path, solver_name, verbose=True, n_paths=15, 
 
 
 def CBS_lns_solver_cols_exp(
-    map_path, agent_path, solver_name, verbose=False, n_paths=20, temp=1
+    map_path, agent_path, solver_name, verbose=False, n_paths=20, temp=1,
+    lns_initial_iterations = 200
 ):
+    import CBS2
+
+    def build_lns_config(num_agents: int, repair_method: Literal["pp", "cbs"], cost_matrix=None) -> lns.Configuration:
+        assert cost_matrix is not None or repair_method != "cbs", "Got CBS repair method without cost matrix"
+
+        repair_methods = {
+            "pp": lns.pp_repair_method,
+            "cbs": CBS2.CBSRepairMethod(cost_matrix)
+        }
+                
+        return lns.Configuration(
+            n_agents=num_agents,
+            n_paths=n_paths,
+            neighborhood_size=3,
+            destroy_method=[lns.random_destroy_method],
+            repair_method=[repair_methods[repair_method]],
+            simulated_annealing=None,
+            dynamic_neighborhood=None,
+        )
+
     s = instance.instance(map_path, agent_path, solver_name, n_paths=n_paths)
     agents_list = range(3, 64, 5)
     lns_collisions = []
@@ -527,39 +548,56 @@ def CBS_lns_solver_cols_exp(
                 for line in head:
                     temp.write(line)
         s_temp = instance.instance(map_path, "temp.txt", solver_name, n_paths=n_paths)
-        t = PathTable(
-            s_temp.num_of_rows, s_temp.num_of_cols, num_of_agents=s_temp.num_agents
-        )
+        # t = PathTable(
+        #     s_temp.num_of_rows, s_temp.num_of_cols, num_of_agents=s_temp.num_agents
+        # )
 
         solver = CBS.CBS(s_temp, verbose=verbose)
         _, cbs_col_count = solver.search()
         cbs_collisions += [cbs_col_count]
 
+        # solver_t, _ = solvers.generate_random_random_solution_iterative(s_temp, t)
+        # lns_num_cols = solver_t.num_collisions
 
-        solver_t, _ = solvers.generate_random_random_solution_iterative(s_temp, t)
-        lns_num_cols = solver_t.num_collisions
-        lns_collisions += [lns_num_cols]
-        solution = torch.tensor(
-            [s_temp.agents[i + 1].path_id for i in range(s_temp.num_agents)]
+        cmatrix = lns.build_cmatrix_fast([a.paths for a in s_temp.agents.values()])  # type: ignore
+        solution_one_hot, lns_num_cols = lns.run_iterative(
+            cmatrix,
+            build_lns_config(num_agents, "pp"),
+            iterations=lns_initial_iterations,
         )
-        solution_one_hot = torch.nn.functional.one_hot(solution, n_paths)
+
+        lns_collisions += [lns_num_cols]
+        # solution = torch.tensor(
+        #     [s_temp.agents[i + 1].path_id for i in range(s_temp.num_agents)]
+        # )
+        # solution_one_hot = torch.nn.functional.one_hot(solution, n_paths)
+
         solver = CBS.CBS(s_temp, solution_one_hot, verbose=verbose)
         solver.expanded_limit = 2000
         _, cbs_lns_col_count = solver.search()
         cbs_lns_collisions += [cbs_lns_col_count]
 
         s_temp = instance.instance(map_path, "temp.txt", solver_name, n_paths=n_paths)
-        t = PathTable(
-            s_temp.num_of_rows, s_temp.num_of_cols, num_of_agents=s_temp.num_agents
+        # t = PathTable(
+        #     s_temp.num_of_rows, s_temp.num_of_cols, num_of_agents=s_temp.num_agents
+        # )
+        # solver_t, _ = solvers.generate_random_random_solution_iterative(s_temp, t, low_level_solver_name='cbs')
+        # lns_cbs_solver_num_cols = solver_t.num_collisions
+
+        cmatrix = lns.build_cmatrix_fast([a.paths for a in s_temp.agents.values()])  # type: ignore
+        cost_matrix = lns.build_cost_matrix(list(s_temp.agents.values())).int()
+        solution_one_hot, lns_cbs_solver_num_cols = lns.run_iterative(
+            cmatrix,
+            build_lns_config(num_agents, "cbs", cost_matrix),
+            iterations=lns_initial_iterations,
         )
-        solver_t, _ = solvers.generate_random_random_solution_iterative(s_temp, t, low_level_solver_name='cbs')
-        lns_cbs_solver_num_cols = solver_t.num_collisions
         lns_cbs_solver_collisions += [lns_cbs_solver_num_cols]
 
-        solution = torch.tensor(
-            [s_temp.agents[i + 1].path_id for i in range(s_temp.num_agents)]
-        )
-        solution_one_hot = torch.nn.functional.one_hot(solution, n_paths)
+        # solution = torch.tensor(
+        #     [s_temp.agents[i + 1].path_id for i in range(s_temp.num_agents)]
+        # )
+        # solution_one_hot = torch.nn.functional.one_hot(solution, n_paths)
+
         solver = CBS.CBS(s_temp, solution_one_hot, verbose=verbose)
         solver.expanded_limit = 2000
         _, lns_cbs_init_and_solver_col_count = solver.search()
@@ -1327,7 +1365,7 @@ def uniform_experiment(
 
     # get generate density
     synthetic_density = float(cmatrix.sum() / (cmatrix.shape[0] ** 2))
-    ratio = real_density / synthetic_density
+    ratio = real_density / (synthetic_density + 1e-6)
     print(f"{real_density=:.4f} {synthetic_density=:.4f} {ratio=:.4f}")
 
     synthetic_cmatrix_file.write_text(json.dumps(cmatrix.tolist()))

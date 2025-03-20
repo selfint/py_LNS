@@ -517,14 +517,7 @@ def run_parallel(
                 cols = int(shared_collisions.item())
                 best_cols = int(shared_best_collisions.item())
 
-                # if 0 < cols <= 10:
-                #     sol_cmatrix = solution_cmatrix(shared_cmatrix, shared_solution)
-                #     colliding_agents = torch.any(sol_cmatrix, dim=1).nonzero().flatten()
-                # print()
-                # print(colliding_agents.tolist())
-                # print()
-
-            log_values.append(((time_passed * 1_000, best_cols)))
+            log_values.append(((time_passed * 1_000, best_cols, iterations)))
             pbar.set_description(
                 f"Agents: {config.n_agents: 2} Iterations: {iterations} Cols: {cols} Best: {best_cols}"
             )
@@ -539,8 +532,9 @@ def run_parallel(
         p.kill()
         p.join()
 
-    timestamps_ms = [t for t, _ in log_values]
-    log_collisions = [c for _, c in log_values]
+    timestamps_ms = [t for t, _, _ in log_values]
+    log_collisions = [c for _, c, _ in log_values]
+    log_iterations = [i for _, _, i in log_values]
 
     sol = shared_best_solution.argmax(dim=1)
 
@@ -549,4 +543,5 @@ def run_parallel(
         int(shared_best_collisions.item()),
         timestamps_ms,
         log_collisions,
+        log_iterations,
     )

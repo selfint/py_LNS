@@ -51,6 +51,15 @@ def load_map(map_file: Path, verbose=False) -> Map:
     return Map(map_graph, n_rows, n_cols)
 
 
+def write_agents(agents: list[Agent], output_file: Path):
+    lines = [
+        "\t".join(["", "", "", "", *map(str, [a.start.x, a.start.y, a.end.x, a.end.y])])
+        for a in agents
+    ]
+
+    output_file.write_text("\n".join(lines))
+
+
 def load_agents(agents_file: Path, flip_xy=False) -> list[Agent]:
     agents = []
     for line in agents_file.read_text().splitlines()[1:]:

@@ -19,10 +19,12 @@ def _generate_agent_paths(
     loc2 = agent.end
     dist = abs(loc1[0] - loc2[0]) + abs(loc1[1] - loc2[1])
 
-    pbar = tqdm.tqdm(total=n_paths, desc=f"Agent {index} {dist=}", unit="path")
+    # pbar = tqdm.tqdm(
+    #     total=n_paths, desc=f"Agent {index} {dist=}", unit="path", position=1
+    # )
     for path in islice(nx.shortest_simple_paths(map_graph, start, end), n_paths):
         paths.append([(x, y) for x, y in path])
-        pbar.update(1)
+        # pbar.update(1)
 
     return paths
 
@@ -60,9 +62,15 @@ def generate_paths(
             )
             futures.append(agent_paths)
 
+        pbar = tqdm.tqdm(
+            total=len(agents),
+            desc=f"Generating agent paths",
+            unit="agent",
+        )
         paths = []
         for future in futures:
             paths.append(future.result())
+            pbar.update(1)
 
     return paths
 

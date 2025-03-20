@@ -21,6 +21,7 @@ import CBS
 from pathlib import Path
 import torch_parallel_lns as lns
 from Agent import Agent
+import json
 
 
 def run_scenario(
@@ -1768,3 +1769,95 @@ def synthetic_experiment(
 
             if on_results is not None:
                 on_results(log_dir)
+
+
+class StatisticsParams(TypedDict):
+    map_file: str
+    paths_file: str
+    n_agents: int
+    n_paths: int
+    destroy_method: Literal["random"]
+    lns_neighborhood: int
+    cbs_max_expand: int
+    pp_iterations: int
+    cbs_iterations: int
+
+
+def statistics_experiment(results_dir: Path, params: StatisticsParams, seed: int):
+    import torch_parallel_lns as lns
+    import CBS2
+
+    print(
+        f"Running statistics experiment: dir={results_dir}"
+        f" {seed=} params={json.dumps(params)}"
+    )
+    results_dir.mkdir(parents=True, exist_ok=False)
+    (results_dir / "seed").write_text(f"{seed}")
+
+    np.random.seed(seed=seed)
+    torch.manual_seed(seed=seed)
+
+    n_agents = params["n_agents"]
+    n_paths = params["n_paths"]
+    all_paths = json.loads(Path(params["paths_file"]).read_text())
+
+    agent_ids = np.random.choice(len(all_paths), params["n_agents"], replace=False)
+
+    paths = [all_paths[i][:n_paths] for i in agent_ids]
+
+    cmatrix = lns.build_cmatrix_fast(paths)
+    cost_matrix = lns.build_cost_matrix_from_paths(paths)
+
+    pp_config = lns.Configuration(
+        n_agents=n_agents,
+        n_paths=n_paths,
+        destroy_method=[lns.random_destroy_method],
+        repair_method=[lns.pp_repair_method],
+        neighborhood_size=params["lns_neighborhood"],
+    )
+
+    cbs_config = lns.Configuration(
+        n_agents=n_agents,
+        n_paths=n_paths,
+        destroy_method=[lns.random_destroy_method],
+        repair_method=[CBS2.CBSRepairMethod(cost_matrix)],
+        neighborhood_size=params["lns_neighborhood"],
+    )
+
+    initial_solution = lns.random_initial_solution(n_agents, n_paths)
+
+    # solve with pp
+    pp_solution, pp_collisions = lns.run_iterative(
+        cmatrix=cmatrix,
+        config=pp_config,
+        iterations=params["pp_iterations"],
+        initial_solution=initial_solution,
+    )
+
+    print("PP collisions:", pp_collisions)
+
+    # solve with cbs
+    cbs_solution, cbs_collisions = lns.run_iterative(
+        cmatrix=cmatrix,
+        config=cbs_config,
+        iterations=params["cbs_iterations"],
+        initial_solution=pp_solution,
+    )
+    print("CBS collisions:", cbs_collisions)
+
+    # save solution if no collisions
+    # if cbs_collisions > 0:
+    #     print(f"[Warning] CBS solution has collisions: {cbs_collisions}")
+    #     return
+
+    agents = agent_ids.tolist()
+    solution = cbs_solution.argmax(dim=1).tolist()
+
+    (results_dir / "solution.json").write_text(
+        json.dumps(
+            {
+                "agents": agents,
+                "solution": solution,
+            }
+        )
+    )

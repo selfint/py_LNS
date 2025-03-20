@@ -34,7 +34,7 @@ class CBS:
         collisions, col_count = self.compute_collision_matrix(solution_matrix)
         initial_node.collisions = collisions
         initial_node.col_count = col_count
-        print(f'Initial cols: {col_count}')
+        # print(f'Initial cols: {col_count}')
         best_sol = initial_node
 
         # Line 4 of CBS
@@ -104,8 +104,8 @@ class CBS:
 
                     # Line 17 of CBS
                     self.open |= {a}
-        print(best_sol.col_count)
-        print(f'Expanded nodes: {self.expanded}')
+        # print(best_sol.col_count)
+        # print(f'Expanded nodes: {self.expanded}')
         return best_sol.solution, best_sol.col_count
 
     def compute_solution_cost(self, solution : torch_parallel_lns.Solution):

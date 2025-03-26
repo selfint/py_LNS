@@ -1783,9 +1783,15 @@ class StatisticsParams(TypedDict):
     cbs_iterations: int
 
 
-def statistics_experiment(results_dir: Path, params: StatisticsParams, seed: int):
+def statistics_experiment(
+    results_dir: Path,
+    params: StatisticsParams,
+    seed: int,
+    all_paths: pd.DataFrame,
+):
     import torch_parallel_lns as lns
     import CBS2
+    import scenario_generator
 
     print(
         f"Running statistics experiment: dir={results_dir}"
@@ -1799,11 +1805,19 @@ def statistics_experiment(results_dir: Path, params: StatisticsParams, seed: int
 
     n_agents = params["n_agents"]
     n_paths = params["n_paths"]
-    all_paths = json.loads(Path(params["paths_file"]).read_text())
 
-    agent_ids = np.random.choice(len(all_paths), params["n_agents"], replace=False)
+    map_graph, _, _ = scenario_generator.load_map(Path(params["map_file"]))
+    map_nodes = list(map_graph.nodes)
 
-    paths = [all_paths[i][:n_paths] for i in agent_ids]
+    indices = np.random.choice(len(map_nodes), n_agents * 2, replace=False)
+    nodes = [map_nodes[i] for i in indices]
+    row_ids = [
+        sx * 32**3 + sy * 32**2 + ex * 32**1 + ey * 32**0
+        for (sx, sy), (ex, ey) in zip(nodes[:n_agents], nodes[n_agents:])
+    ]
+    rows = [all_paths.loc[row] for row in row_ids]
+
+    paths = [[row[str(p)] for p in range(n_paths)] for row in rows]
 
     cmatrix = lns.build_cmatrix_fast(paths)
     cost_matrix = lns.build_cost_matrix_from_paths(paths)
@@ -1846,17 +1860,16 @@ def statistics_experiment(results_dir: Path, params: StatisticsParams, seed: int
     print("CBS collisions:", cbs_collisions)
 
     # save solution if no collisions
-    # if cbs_collisions > 0:
-    #     print(f"[Warning] CBS solution has collisions: {cbs_collisions}")
-    #     return
+    if cbs_collisions > 0:
+        print(f"[Warning] CBS solution has collisions: {cbs_collisions}")
+        return
 
-    agents = agent_ids.tolist()
     solution = cbs_solution.argmax(dim=1).tolist()
 
     (results_dir / "solution.json").write_text(
         json.dumps(
             {
-                "agents": agents,
+                "rows": row_ids,
                 "solution": solution,
             }
         )

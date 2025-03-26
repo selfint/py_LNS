@@ -98,7 +98,7 @@ def build_cost_matrix_from_paths(
 
     cost_matrix = [[len(path) for path in agent_paths] for agent_paths in paths]
 
-    cost_matrix = torch.tensor(cost_matrix, device=device)
+    cost_matrix = torch.tensor(cost_matrix, device=device, dtype=torch.int32)
 
     return cost_matrix
 
@@ -380,14 +380,19 @@ def run_iterative(
     config: Configuration,
     iterations: int,
     optimal: int = 0,
+    initial_solution: Solution | None = None,
 ):
-    solution = random_initial_solution(config.n_agents, config.n_paths)
+    if initial_solution is not None:
+        solution = initial_solution.clone()
+    else:
+        solution = random_initial_solution(config.n_agents, config.n_paths)
+
     collisions = int(solution_cmatrix(cmatrix, solution).sum() // 2)
 
-    pbar = tqdm(range(iterations), desc=f"LNS Collisions: {collisions}")
+    pbar = tqdm(range(iterations), desc=f"Collisions: {collisions}")
     for _ in pbar:
         solution, collisions = run_iteration(cmatrix, solution, int(collisions), config)
-        pbar.set_description(f"LNS Collisions: {collisions}")
+        pbar.set_description(f"Collisions: {collisions}")
         if collisions == optimal:
             return solution, collisions
 

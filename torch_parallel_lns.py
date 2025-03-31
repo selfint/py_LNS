@@ -343,6 +343,7 @@ class Configuration(NamedTuple):
     neighborhood_size: int
     simulated_annealing: tuple[float, float, float] or None = None
     dynamic_neighborhood: int or None = None
+    worker_sub_iterations: int = 1
 
 
 def run_iteration(
@@ -399,6 +400,33 @@ def run_iterative(
     return solution, collisions
 
 
+def run_stopwatch(
+    cmatrix: CMatrix,
+    config: Configuration,
+    seconds: int,
+    optimal: int = 0,
+    initial_solution: Solution | None = None,
+):
+    if initial_solution is not None:
+        solution = initial_solution.clone()
+    else:
+        solution = random_initial_solution(config.n_agents, config.n_paths)
+
+    collisions = int(solution_cmatrix(cmatrix, solution).sum() // 2)
+
+    pbar = tqdm(total=seconds, desc=f"Collisions: {collisions}")
+    start = time.time()
+    while (elapsed := time.time() - start) < seconds:
+        solution, collisions = run_iteration(cmatrix, solution, int(collisions), config)
+        pbar.set_description(f"Collisions: {collisions}")
+        pbar.n = elapsed
+
+        if collisions == optimal:
+            return solution, collisions
+
+    return solution, collisions
+
+
 class SharedState(NamedTuple):
     cmatrix: CMatrix
     solution: Solution
@@ -425,6 +453,7 @@ def worker(
     destroy_method = config.destroy_method[thread_id % len(config.destroy_method)]
     repair_method = config.repair_method[thread_id % len(config.repair_method)]
 
+    iteration = 0
     while True:
         # with bench.benchmark(label="Worker iteration"):
         n_subset = config.neighborhood_size
@@ -446,8 +475,14 @@ def worker(
         sol_cmatrix = solution_cmatrix(shared.cmatrix, solution)
         collisions = sol_cmatrix.sum() // 2
 
+        iteration += 1
+        if iteration < config.worker_sub_iterations:
+            continue
+        else:
+            iteration = 0
+
         with shared.lock:
-            shared.iterations.add_(1)
+            shared.iterations.add_(config.worker_sub_iterations)
 
             # Exponential decay on simulated annealing probability
             if config.simulated_annealing is not None:
@@ -506,6 +541,9 @@ def run_parallel(
         lock,
     )
 
+    if not mp.get_start_method(allow_none=True):
+        mp.set_start_method("spawn")
+
     workers = []
     for thread_id in range(n_threads):
         p = mp.Process(target=worker, args=(shared, config, thread_id))
@@ -524,7 +562,7 @@ def run_parallel(
 
             log_values.append(((time_passed * 1_000, best_cols, iterations)))
             pbar.set_description(
-                f"Agents: {config.n_agents: 2} Iterations: {iterations} Cols: {cols} Best: {best_cols}"
+                f"{config.n_agents=: 2} {n_threads=} {iterations=} {cols=} {best_cols=}"
             )
 
             if optimal is not None and best_cols <= optimal:

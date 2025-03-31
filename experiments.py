@@ -1787,3 +1787,24 @@ def statistics_experiment(
             }
         )
     )
+
+
+class MapDensityExperimentParams(TypedDict):
+    n_paths: int
+
+
+def map_density_experiment(map_file: str, params: MapDensityExperimentParams) -> float:
+    import scenario_generator
+    import path_generator
+
+    print(f"Running map density experiment: {map_file=} params={json.dumps(params)}")
+
+    map_graph, n_rows, _ = scenario_generator.load_map(Path(map_file))
+    agents = scenario_generator.generate_scenario_top_to_bottom(map_graph, n_rows)
+    all_paths = path_generator.generate_paths(map_graph, agents, params["n_paths"])
+
+    cmatrix = lns.build_cmatrix_fast(all_paths)
+
+    density = cmatrix.sum() / (cmatrix.shape[0] ** 2)
+
+    return float(density)

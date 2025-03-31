@@ -946,6 +946,8 @@ class ParallelismAblationExpParams(TypedDict):
     destroy_method: Literal["random"]
     repair_method: Literal["pp"]
     threads_range: tuple[int, int]
+    worker_sub_iterations: int
+    simulated_annealing: tuple[float, float, float] | None = None
 
 
 def stateless_solver_parallelism_ablation_exp(
@@ -995,60 +997,12 @@ def stateless_solver_parallelism_ablation_exp(
 
     results = []
 
-    # no threads
-    start = time.time()
-    pbar = tqdm.tqdm(range(params["n_seconds"]))
     total = 0
-    log_t = 0
     timestamps = []
     iterations = []
     collisions = []
 
     initial_solution = lns.random_initial_solution(config.n_agents, config.n_paths)
-
-    p_solution = initial_solution.clone()
-
-    p_cols = int(lns.solution_cmatrix(p_cmatrix, p_solution).sum() // 2)
-
-    sample_rate = 10 / 1_000  # 10 ms
-    timestamps.append(0)
-    iterations.append(total)
-    collisions.append(p_cols)
-    while time.time() - start < params["n_seconds"]:
-        p_solution, p_cols = lns.run_iteration(
-            p_cmatrix,
-            p_solution,
-            p_cols,
-            config,
-        )
-        total += 1
-        timestamp = time.time()
-
-        if timestamp - start > log_t:
-            timestamps.append((timestamp - start) * 1000)
-            iterations.append(total)
-            collisions.append(p_cols)
-            log_t += sample_rate
-
-        pbar.set_description(f"Iterations: {total} Cols: {int(p_cols)}")
-        pbar.n = timestamp - start
-        pbar.refresh()
-
-    rate = int(np.mean(np.diff(iterations) / np.diff(timestamps)) * 1000)
-    results.append(
-        {
-            "n_threads": 0,
-            "timestamps": timestamps,
-            "iterations": iterations,
-            "rate": int(rate),
-            "collisions": collisions,
-            "final_collisions": int(p_cols),
-        }
-    )
-
-    print("\nNo parallelism: ", total, int(p_cols), rate)
-
-    # with threads
     for n_threads in range(*params["threads_range"]):
         p_solution = initial_solution.clone()
 
@@ -1066,6 +1020,16 @@ def stateless_solver_parallelism_ablation_exp(
         iterations = np.array(iterations)
         timestamps = np.array(timestamps)
 
+        last_zero_col_index = np.where(iterations >= n_threads)[0][0]
+
+        rate = int(
+            np.mean(
+                np.diff(iterations[last_zero_col_index:])
+                / np.diff(timestamps[last_zero_col_index:])
+            )
+            * 1000
+        )
+
         rate = int(np.mean(np.diff(iterations) / np.diff(timestamps)) * 1000)
 
         results.append(
@@ -1078,38 +1042,9 @@ def stateless_solver_parallelism_ablation_exp(
                 "final_collisions": int(p_cols),
             }
         )
-        print("\nParallelism: ", n_threads, total, int(p_cols), rate)
+        print("\nParallelism: ", n_threads, int(p_cols), rate)
 
     (results_dir / "results.json").write_text(json.dumps(results))
-
-    # for n_threads, timestamps, iterations, rate, p_cols in results:
-    #     plt.plot(
-    #         timestamps,
-    #         iterations,
-    #         label=f"P={n_threads} ({rate} iter/s)",
-    #     )
-
-    # with (results_dir / "p_iterations_ablation_results.json").open("w") as f:
-    #     json_results = {
-    #         f"P{n_threads}": {
-    #             "n_threads": int(n_threads),
-    #             "timestamps": np.array(timestamps).tolist(),
-    #             "iterations": np.array(iterations).tolist(),
-    #             "rate": int(rate),
-    #             "cols": int(p_cols),
-    #         }
-    #         for n_threads, timestamps, iterations, rate, p_cols in results
-    #     }
-
-    #     json.dump(json_results, f)
-
-    # plt.title("Parallelism Ablation", fontsize=16)
-    # plt.xlabel("Time (ms)", fontsize=12)
-    # plt.ylabel("Iterations", fontsize=12)
-    # plt.grid(alpha=0.3)
-    # plt.legend()
-    # plt.tight_layout()
-    # plt.savefig(results_dir / "parallelism_ablation.png")
 
 
 def collisions_by_ms_aggregate_exp(
@@ -1778,9 +1713,7 @@ class StatisticsParams(TypedDict):
     n_paths: int
     destroy_method: Literal["random"]
     lns_neighborhood: int
-    cbs_max_expand: int
-    pp_iterations: int
-    cbs_iterations: int
+    lns_seconds: int
 
 
 def statistics_experiment(
@@ -1790,7 +1723,6 @@ def statistics_experiment(
     all_paths: pd.DataFrame,
 ):
     import torch_parallel_lns as lns
-    import CBS2
     import scenario_generator
 
     print(
@@ -1820,9 +1752,8 @@ def statistics_experiment(
     paths = [[row[str(p)] for p in range(n_paths)] for row in rows]
 
     cmatrix = lns.build_cmatrix_fast(paths)
-    cost_matrix = lns.build_cost_matrix_from_paths(paths)
 
-    pp_config = lns.Configuration(
+    config = lns.Configuration(
         n_agents=n_agents,
         n_paths=n_paths,
         destroy_method=[lns.random_destroy_method],
@@ -1830,41 +1761,23 @@ def statistics_experiment(
         neighborhood_size=params["lns_neighborhood"],
     )
 
-    cbs_config = lns.Configuration(
-        n_agents=n_agents,
-        n_paths=n_paths,
-        destroy_method=[lns.random_destroy_method],
-        repair_method=[CBS2.CBSRepairMethod(cost_matrix)],
-        neighborhood_size=params["lns_neighborhood"],
-    )
-
     initial_solution = lns.random_initial_solution(n_agents, n_paths)
 
     # solve with pp
-    pp_solution, pp_collisions = lns.run_iterative(
+    solution, collisions = lns.run_stopwatch(
         cmatrix=cmatrix,
-        config=pp_config,
-        iterations=params["pp_iterations"],
+        config=config,
+        seconds=params["lns_seconds"],
         initial_solution=initial_solution,
     )
 
-    print("PP collisions:", pp_collisions)
+    print("Collisions:", collisions)
 
-    # solve with cbs
-    cbs_solution, cbs_collisions = lns.run_iterative(
-        cmatrix=cmatrix,
-        config=cbs_config,
-        iterations=params["cbs_iterations"],
-        initial_solution=pp_solution,
-    )
-    print("CBS collisions:", cbs_collisions)
-
-    # save solution if no collisions
-    if cbs_collisions > 0:
-        print(f"[Warning] CBS solution has collisions: {cbs_collisions}")
+    if collisions > 0:
+        print("LNS could not resolve all collisions.")
         return
 
-    solution = cbs_solution.argmax(dim=1).tolist()
+    solution = solution.argmax(dim=1).tolist()
 
     (results_dir / "solution.json").write_text(
         json.dumps(

@@ -1,5 +1,7 @@
 from typing import NamedTuple
 from pathlib import Path
+from itertools import product
+
 
 import networkx as nx
 import numpy as np
@@ -75,6 +77,28 @@ def load_agents(agents_file: Path, flip_xy=False) -> list[Agent]:
                 Point(int(sx), int(sy)),
                 Point(int(ex), int(ey)),
             )
+        agents.append(agent)
+
+    return agents
+
+
+def generate_scenario_top_to_bottom(map_graph: nx.Graph, n_rows: int) -> list[Agent]:
+    if not nx.is_connected(map_graph):
+        raise ValueError("The generated graph is not fully connected.")
+
+    nodes = map_graph.nodes
+
+    assert max([node[1] for node in nodes]) == n_rows - 1
+    starts = np.array([node for node in nodes if node[1] == 0])
+    ends = np.array([node for node in nodes if node[1] == n_rows - 1])
+
+    permutations = [(start, end) for start, end in product(starts, ends)]
+
+    print(f"Generated {len(permutations)} start/end pairs")
+
+    agents = []
+    for (sx, sy), (ex, ey) in permutations:
+        agent = Agent(Point(int(sx), int(sy)), Point(int(ex), int(ey)))
         agents.append(agent)
 
     return agents

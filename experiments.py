@@ -990,10 +990,26 @@ def stateless_solver_parallelism_ablation_exp(
     )
 
     map_graph, _, _ = scenario_generator.load_map(Path(params["map_path"]))
-    agents = scenario_generator.generate_scenario(map_graph, config.n_agents)
-    paths = path_generator.generate_paths(map_graph, agents, config.n_paths)
 
-    p_cmatrix = lns.build_cmatrix_fast(paths)
+    while True:
+        agents = scenario_generator.generate_scenario(map_graph, config.n_agents)
+        paths = path_generator.generate_paths(map_graph, agents, config.n_paths)
+        p_cmatrix = lns.build_cmatrix_fast(paths)
+
+        colliding_agents = (
+            p_cmatrix.view(
+                (config.n_agents, config.n_paths, config.n_agents, config.n_paths)
+            )
+            .amin(dim=(1, 3))
+            .nonzero()
+            .flatten()
+            .unique()
+        )
+
+        if len(colliding_agents) == 0:
+            break
+
+        print(f"Retrying path generation, got {colliding_agents=}")
 
     results = []
 
@@ -1802,6 +1818,9 @@ def map_density_experiment(map_file: str, params: MapDensityExperimentParams) ->
     map_graph, n_rows, _ = scenario_generator.load_map(Path(map_file))
     agents = scenario_generator.generate_scenario_top_to_bottom(map_graph, n_rows)
     all_paths = path_generator.generate_paths(map_graph, agents, params["n_paths"])
+
+    # remove start node from all paths
+    all_paths = [[p[1:] for p in agent_paths] for agent_paths in all_paths]
 
     cmatrix = lns.build_cmatrix_fast(all_paths)
 
